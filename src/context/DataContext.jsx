@@ -6,7 +6,12 @@ import { uid } from '../lib/utils'
 const DataContext = createContext(null)
 
 export function DataProvider({ children }) {
-  const [state, setState] = useState(() => loadState() || buildSeed())
+  // Saved portals from an earlier version may predate newer collections, so
+  // seed defaults fill in any keys the stored state is missing.
+  const [state, setState] = useState(() => {
+    const stored = loadState()
+    return stored ? { ...buildSeed(), ...stored } : buildSeed()
+  })
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -229,6 +234,67 @@ export function DataProvider({ children }) {
     [patch],
   )
 
+  /** A learner asks to join a course; an administrator approves or declines. */
+  const requestEnrollment = useCallback(
+    (userId, courseId, note = '') =>
+      patch((prev) => {
+        const open = (prev.enrollmentRequests || []).some(
+          (r) => r.userId === userId && r.courseId === courseId && r.status === 'pending',
+        )
+        if (open) return {}
+        return {
+          enrollmentRequests: [
+            ...(prev.enrollmentRequests || []),
+            {
+              id: uid('er'),
+              userId,
+              courseId,
+              note,
+              requestedAt: new Date().toISOString(),
+              status: 'pending',
+            },
+          ],
+        }
+      }),
+    [patch],
+  )
+
+  const resolveEnrollmentRequest = useCallback(
+    (id, approve) =>
+      patch((prev) => {
+        const request = (prev.enrollmentRequests || []).find((r) => r.id === id)
+        if (!request) return {}
+        const enrollmentRequests = prev.enrollmentRequests.map((r) =>
+          r.id === id
+            ? { ...r, status: approve ? 'approved' : 'declined', resolvedAt: new Date().toISOString() }
+            : r,
+        )
+        if (!approve) return { enrollmentRequests }
+
+        const already = prev.enrollments.some(
+          (e) => e.userId === request.userId && e.courseId === request.courseId,
+        )
+        const enrollments = already
+          ? prev.enrollments
+          : [
+              ...prev.enrollments,
+              {
+                id: uid('en'),
+                userId: request.userId,
+                courseId: request.courseId,
+                enrolledAt: new Date().toISOString(),
+                completedUnits: [],
+                status: 'not_started',
+                score: null,
+                completedAt: null,
+                timeSpentMin: 0,
+              },
+            ]
+        return { enrollmentRequests, enrollments }
+      }),
+    [patch],
+  )
+
   const unenroll = useCallback(
     (userId, courseId) =>
       patch((prev) => ({
@@ -359,6 +425,8 @@ export function DataProvider({ children }) {
         deleteUnit,
         moveUnit,
         enroll,
+        requestEnrollment,
+        resolveEnrollmentRequest,
         unenroll,
         resetProgress,
         completeUnit,
@@ -385,6 +453,8 @@ export function DataProvider({ children }) {
       deleteUnit,
       moveUnit,
       enroll,
+      requestEnrollment,
+      resolveEnrollmentRequest,
       unenroll,
       resetProgress,
       completeUnit,

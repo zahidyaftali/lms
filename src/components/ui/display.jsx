@@ -80,7 +80,7 @@ export function Progress({ value, className, tone = 'brand' }) {
   return (
     <div className={cx('h-2 rounded-full bg-gray-200 overflow-hidden', className)}>
       <div
-        className={cx('h-full rounded-full transition-all', tone === 'green' ? 'bg-emerald-500' : 'bg-brand-700')}
+        className={cx('h-full rounded-full transition-all duration-500 ease-out', tone === 'green' ? 'bg-emerald-500' : 'bg-brand-700')}
         style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
       />
     </div>
@@ -89,13 +89,13 @@ export function Progress({ value, className, tone = 'brand' }) {
 
 export function Tabs({ tabs, active, onChange, className }) {
   return (
-    <div className={cx('flex gap-7 border-b border-line', className)}>
+    <div className={cx('flex gap-5 sm:gap-7 border-b border-line overflow-x-auto scroll-thin', className)}>
       {tabs.map((t) => (
         <button
           key={t.value}
           onClick={() => onChange(t.value)}
           className={cx(
-            'relative pb-3 text-[14px] transition whitespace-nowrap',
+            'relative pb-3 text-[14px] transition-colors whitespace-nowrap',
             active === t.value
               ? 'text-ink-900 font-semibold after:absolute after:-bottom-px after:left-0 after:right-0 after:h-[3px] after:bg-brand-700 after:rounded-t'
               : 'text-ink-500 hover:text-ink-900',
@@ -112,13 +112,13 @@ export function Tabs({ tabs, active, onChange, className }) {
 /** Vertical tab rail used by Account & Settings. */
 export function SideTabs({ tabs, active, onChange }) {
   return (
-    <nav className="w-[190px] shrink-0">
+    <nav className="w-full lg:w-[190px] shrink-0 flex lg:block overflow-x-auto scroll-thin border-b lg:border-b-0 border-line">
       {tabs.map((t) => (
         <button
           key={t.value}
           onClick={() => onChange(t.value)}
           className={cx(
-            'w-full text-left px-4 py-3 text-[14px] transition',
+            'whitespace-nowrap text-left px-4 py-3 text-[14px] transition-colors lg:w-full',
             active === t.value
               ? 'bg-navy-900 text-white font-medium'
               : 'text-ink-700 hover:bg-gray-50',

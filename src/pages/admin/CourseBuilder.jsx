@@ -11,6 +11,7 @@ import {
   Icon,
   Input,
   Modal,
+  OptionList,
   Progress,
   Select,
   Tabs,
@@ -144,9 +145,9 @@ export default function CourseBuilder() {
   }
 
   return (
-    <div className="h-screen flex bg-white">
+    <div className="min-h-screen lg:h-screen flex flex-col lg:flex-row bg-white">
       {/* ------------------------------------------------------ left panel */}
-      <aside className="w-[400px] shrink-0 border-r border-line flex flex-col">
+      <aside className="w-full lg:w-[400px] shrink-0 border-b lg:border-b-0 lg:border-r border-line flex flex-col">
         <div className="h-[66px] bg-navy-900 flex items-center gap-3 px-4 shrink-0">
           <button
             onClick={() => navigate('/courses')}
@@ -195,7 +196,7 @@ export default function CourseBuilder() {
               </Button>
 
               {addOpen && (
-                <div className="absolute left-0 top-[52px] z-40 w-[370px] bg-white border border-line rounded-md shadow-pop py-2 animate-pop">
+                <div className="absolute left-0 top-[52px] z-40 w-[300px] sm:w-[370px] max-w-[calc(100vw-40px)] bg-white border border-line rounded-md shadow-pop py-2 animate-scale-in origin-top-left">
                   {ADD_MENU.map((group) => (
                     <div key={group.key} className="relative">
                       <button
@@ -216,7 +217,7 @@ export default function CourseBuilder() {
                       </button>
 
                       {submenu === group.key && group.items && (
-                        <div className="absolute left-[368px] top-0 w-[240px] bg-white border border-line rounded-md shadow-pop py-2 animate-pop">
+                        <div className="absolute z-50 left-0 top-full mt-1 sm:left-[298px] lg:left-[368px] sm:top-0 sm:mt-0 w-[240px] max-w-[calc(100vw-40px)] bg-white border border-line rounded-md shadow-pop py-2 animate-scale-in">
                           {group.items.map((item) => (
                             <button
                               key={item}
@@ -259,7 +260,7 @@ export default function CourseBuilder() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto scroll-thin">
+        <div className="max-h-[50vh] lg:max-h-none lg:flex-1 overflow-y-auto scroll-thin">
           {course.units.length === 0 ? (
             <div className="px-6 py-14 text-center">
               <Icon name="bookPlus" className="w-8 h-8 mx-auto text-brand-700 mb-3" strokeWidth={1.4} />
@@ -325,10 +326,10 @@ export default function CourseBuilder() {
       </aside>
 
       {/* ----------------------------------------------------- right panel */}
-      <div className="flex-1 min-w-0 overflow-y-auto scroll-thin">
-        <CourseHero course={course} className="min-h-[230px] flex items-center" />
+      <div className="flex-1 min-w-0 lg:overflow-y-auto scroll-thin">
+        <CourseHero course={course} className="min-h-[190px] lg:min-h-[230px] flex items-center" />
 
-        <div className="max-w-[880px] mx-auto px-8 py-8">
+        <div className="max-w-[880px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
           <textarea
             value={course.description}
             disabled={!canEdit}
@@ -716,7 +717,7 @@ function CourseSettingsPanel({ open, course, categories, instructors, onClose, o
         </Field>
 
         <Field label="Instructors" className="col-span-2">
-          <div className="space-y-2.5">
+          <OptionList>
             {instructors.map((i) => (
               <Checkbox
                 key={i.id}
@@ -731,7 +732,7 @@ function CourseSettingsPanel({ open, course, categories, instructors, onClose, o
                 }
               />
             ))}
-          </div>
+          </OptionList>
         </Field>
 
         <div className="col-span-2 space-y-4">

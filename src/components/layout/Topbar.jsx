@@ -51,7 +51,7 @@ export default function Topbar({ onToggleSidebar }) {
   const roles = switchableRoles(user)
 
   return (
-    <header className="h-[72px] shrink-0 bg-white border-b border-line flex items-center gap-4 px-5 relative z-30">
+    <header className="h-16 lg:h-[72px] shrink-0 bg-white border-b border-line flex items-center gap-2 sm:gap-4 px-3 sm:px-5 relative z-40">
       <button
         onClick={onToggleSidebar}
         className="p-2 -ml-1 rounded text-navy-900 hover:bg-gray-100 shrink-0"
@@ -60,12 +60,15 @@ export default function Topbar({ onToggleSidebar }) {
         <Icon name="menu" className="w-6 h-6" strokeWidth={1.8} />
       </button>
 
-      <button onClick={() => navigate('/')} className="shrink-0">
+      <button onClick={() => navigate('/')} className="shrink-0 hidden sm:block">
         <Logo />
       </button>
+      <button onClick={() => navigate('/')} className="shrink-0 sm:hidden">
+        <Logo boxed={false} size="sm" />
+      </button>
 
-      <div className="flex-1 flex justify-center px-4" ref={searchRef}>
-        <div className="relative w-full max-w-[430px]">
+      <div className="flex-1 flex justify-center px-1 sm:px-4 min-w-0" ref={searchRef}>
+        <div className="relative w-full max-w-[430px] min-w-0">
           <input
             value={query}
             onChange={(e) => {
@@ -74,12 +77,12 @@ export default function Topbar({ onToggleSidebar }) {
             }}
             onFocus={() => setResultsOpen(true)}
             placeholder="Search"
-            className="field pr-11 italic placeholder:italic placeholder:text-ink-500"
+            className="field h-10 lg:h-11 pr-11 italic placeholder:italic placeholder:text-ink-500"
           />
           <Icon name="search" className="w-[19px] h-[19px] absolute right-3.5 top-1/2 -translate-y-1/2 text-navy-900" />
 
           {resultsOpen && query.trim().length >= 2 && (
-            <div className="absolute left-0 right-0 top-[52px] bg-white border border-line rounded-md shadow-pop py-2 animate-pop max-h-[360px] overflow-y-auto scroll-thin">
+            <div className="absolute left-0 right-0 top-[50px] bg-white border border-line rounded-md shadow-pop py-2 animate-scale-in origin-top max-h-[360px] overflow-y-auto scroll-thin z-50">
               {results.users.length === 0 && results.courses.length === 0 && (
                 <p className="px-4 py-3 text-[13.5px] text-ink-500">No matches for “{query}”.</p>
               )}
@@ -123,7 +126,7 @@ export default function Topbar({ onToggleSidebar }) {
 
       <button
         onClick={() => navigate('/messages')}
-        className="relative p-2 rounded text-navy-900 hover:bg-gray-100 shrink-0"
+        className="relative p-2 rounded text-navy-900 hover:bg-gray-100 shrink-0 transition-colors"
         aria-label="Messages"
       >
         <Icon name="mail" className="w-[22px] h-[22px]" strokeWidth={1.5} />
@@ -136,19 +139,19 @@ export default function Topbar({ onToggleSidebar }) {
         <button
           onClick={() => setMenuOpen((v) => !v)}
           className={cx(
-            'flex items-center gap-3 pl-3 pr-2 py-1.5 rounded-md transition',
+            'flex items-center gap-3 pl-2 sm:pl-3 pr-1 sm:pr-2 py-1.5 rounded-md transition-colors',
             menuOpen ? 'bg-brand-50' : 'hover:bg-gray-50',
           )}
         >
-          <span className="text-right leading-tight hidden sm:block">
+          <span className="text-right leading-tight hidden md:block">
             <span className="block text-[14px] font-semibold text-ink-900">{shortName(user)}</span>
             <span className="block text-[12px] text-ink-500">{VIEW_LABEL[view] || 'Learner'}</span>
           </span>
-          <Avatar user={user} size={38} />
+          <Avatar user={user} size={36} />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-[58px] w-[248px] bg-white border border-line rounded-md shadow-pop py-2 animate-pop">
+          <div className="absolute right-0 top-[54px] w-[248px] bg-white border border-line rounded-md shadow-pop py-2 animate-scale-in origin-top-right">
             {roles.length > 1 && (
               <>
                 <p className="px-4 py-2 text-[13px] font-semibold text-ink-900">Switch role</p>

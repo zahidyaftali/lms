@@ -29,7 +29,7 @@ export default function LearnerHome() {
       <h1 className="page-title mb-1">Welcome back, {user.firstName}!</h1>
       <p className="hint mb-7">Pick up where you left off, or review what you have already completed.</p>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 stagger">
         <Tile icon="book" label="Courses in progress" value={inProgress.length} />
         <Tile icon="checkCircle" label="Completed" value={completed.length} />
         <Tile icon="clock" label="Training time" value={duration(minutes)} />
@@ -140,7 +140,7 @@ export default function LearnerHome() {
 
 function Tile({ icon, label, value }) {
   return (
-    <div className="card px-5 py-4">
+    <div className="card card-interactive px-5 py-4">
       <span className="w-9 h-9 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center mb-3">
         <Icon name={icon} className="w-[18px] h-[18px]" strokeWidth={1.6} />
       </span>

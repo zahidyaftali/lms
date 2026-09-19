@@ -15,6 +15,7 @@ import {
   MenuDivider,
   MenuItem,
   Modal,
+  OptionList,
   PageHeader,
   SearchInput,
   Select,
@@ -444,7 +445,7 @@ export default function Users() {
               ))}
             </Select>
           </Field>
-          <Field label="Branch">
+          <Field label="Branch" hint="Optional campus this account belongs to.">
             <Select value={draft.branchId || ''} onChange={(e) => setDraft({ ...draft, branchId: e.target.value })}>
               <option value="">No branch</option>
               {branches.map((b) => (
@@ -460,7 +461,7 @@ export default function Users() {
           </Field>
 
           <Field label="Groups" hint="Members inherit every course assigned to the group." className="sm:col-span-2">
-            <div className="space-y-2.5">
+            <OptionList>
               {groups.map((g) => (
                 <Checkbox
                   key={g.id}
@@ -474,7 +475,7 @@ export default function Users() {
                   }
                 />
               ))}
-            </div>
+            </OptionList>
           </Field>
 
           <Field label="Bio" className="sm:col-span-2">

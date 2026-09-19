@@ -62,11 +62,11 @@ export default function Settings() {
   const showFooter = ['portal', 'users', 'courses', 'security'].includes(tab)
 
   return (
-    <div className="-mx-8 -my-7 min-h-[calc(100vh-72px)] flex flex-col">
-      <div className="flex-1 flex">
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 -my-5 lg:-my-7 min-h-[calc(100vh-64px)] lg:min-h-[calc(100vh-72px)] flex flex-col">
+      <div className="flex-1 flex flex-col lg:flex-row">
         <SideTabs tabs={TABS} active={tab} onChange={setTab} />
 
-        <div className="flex-1 min-w-0 px-10 py-7 pb-28">
+        <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-7 pb-24">
           <h1 className="page-title mb-7">{TABS.find((t) => t.value === tab)?.label}</h1>
 
           {tab === 'portal' && <PortalTab draft={draft} set={set} />}
@@ -80,7 +80,7 @@ export default function Settings() {
       </div>
 
       {showFooter && (
-        <div className="sticky bottom-0 bg-white border-t border-line px-10 py-4 flex gap-4">
+        <div className="sticky bottom-0 z-10 bg-white border-t border-line px-4 sm:px-6 lg:px-10 py-4 flex gap-4">
           <Button onClick={save} disabled={!dirty}>
             Save
           </Button>
@@ -102,7 +102,7 @@ export default function Settings() {
 function Section({ title, children }) {
   return (
     <section className="card mb-6">
-      <div className="px-7 py-6">
+      <div className="px-5 sm:px-7 py-6">
         <h2 className="text-[13px] font-semibold tracking-[0.12em] uppercase text-ink-700 mb-6">{title}</h2>
         <div className="space-y-7">{children}</div>
       </div>

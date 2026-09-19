@@ -25,11 +25,11 @@ export default function Certificates() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6 stagger">
           {mine.map((c) => {
             const course = courseById(c.courseId)
             return (
-              <article key={c.id} className="card p-6 flex flex-col">
+              <article key={c.id} className="card card-interactive p-6 flex flex-col">
                 <Icon name="certificate" className="w-9 h-9 text-gold-500 mb-4" strokeWidth={1.4} />
                 <h3 className="text-[16px] font-semibold leading-6">{course?.name || 'Course'}</h3>
                 <p className="hint mt-1.5">Issued {formatDate(c.issuedAt)}</p>

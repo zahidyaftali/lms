@@ -930,5 +930,15 @@ export function buildSeed() {
     certificates: [
       { id: 'cert_1', userId: u('elisme'), courseId: c('hipaa'), issuedAt: daysAgo(38), code: 'GA-HP05-0031' },
     ],
+    enrollmentRequests: [
+      {
+        id: 'er_1',
+        userId: u('devon'),
+        courseId: c('nclexrn'),
+        requestedAt: hoursAgo(5),
+        status: 'pending',
+        note: 'I am sitting the RN exam in November.',
+      },
+    ],
   }
 }

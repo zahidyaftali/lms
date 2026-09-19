@@ -59,6 +59,27 @@ date/location/capacity, SCORM · xAPI · cmi5 packages.
 Course-level tools: enrolled users panel, duplicate course, settings (code, price, category, level,
 instructors, completion rule, time limit, certificate, banner theme).
 
+## Enrollment requests
+
+Learners cannot enroll themselves. From **Course catalog** a learner can *request* a course; the request
+lands in the **Enrollment requests** widget on the administrator dashboard, where Approve creates the
+enrollment immediately and Decline closes the request (the learner can ask again). A pending request shows
+as "Awaiting approval" on the learner's catalog card.
+
+## Responsive layout
+
+The portal is built for phones, tablets and desktops:
+
+- Below `lg` the blue rail becomes an off-canvas drawer opened from the hamburger, with a backdrop, and it
+  closes automatically on navigation. From `lg` up the same button collapses the rail to icons.
+- The topbar shrinks to 64px, drops the boxed logo and the name/role block, and keeps search usable.
+- Account & Settings turns its vertical tab rail into a scrollable strip; the course builder stacks the
+  unit list above the preview; tables scroll horizontally inside their card.
+- Modals become full-width sheets with stacked footer buttons.
+
+Motion is kept light — page and card fades, a slide-in drawer, scaling menus, animated progress bars — and
+everything is disabled under `prefers-reduced-motion`.
+
 ## What learners get
 
 Assigned courses with a unit-by-unit player, progress tracking, quizzes graded on submit, assignment

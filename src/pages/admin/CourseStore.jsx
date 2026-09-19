@@ -164,11 +164,11 @@ export default function CourseStore() {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6 stagger">
         {rows.map((t) => {
           const added = courses.some((c) => c.name === t.name)
           return (
-            <article key={t.key} className="card overflow-hidden flex flex-col">
+            <article key={t.key} className="card card-interactive overflow-hidden flex flex-col">
               <CourseHero
                 course={{ name: t.name, cover: t.cover, units: t.outline.map(() => ({ type: 'content' })) }}
                 size="sm"

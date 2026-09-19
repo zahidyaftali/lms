@@ -19,20 +19,24 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
   if (!open) return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-10 px-4">
-      <div className="fixed inset-0 bg-ink-900/40" onClick={onClose} />
-      <div className={cx('relative w-full bg-white rounded-card shadow-pop animate-pop', width)}>
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-line">
-          <div>
-            <h3 className="text-[18px] font-semibold text-ink-900">{title}</h3>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-6 sm:py-10 px-3 sm:px-4">
+      <div className="fixed inset-0 bg-ink-900/40 animate-fade-in" onClick={onClose} />
+      <div className={cx('relative w-full bg-white rounded-card shadow-pop animate-scale-in', width)}>
+        <div className="flex items-start justify-between gap-4 px-5 sm:px-6 py-5 border-b border-line">
+          <div className="min-w-0">
+            <h3 className="text-[18px] font-bold text-ink-900">{title}</h3>
             {subtitle && <p className="hint mt-1">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-900 p-1 -mr-1">
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-900 p-1 -mr-1 transition-colors shrink-0">
             <Icon name="x" />
           </button>
         </div>
-        <div className="px-6 py-5 max-h-[65vh] overflow-y-auto scroll-thin">{children}</div>
-        {footer && <div className="px-6 py-4 border-t border-line flex justify-end gap-3">{footer}</div>}
+        <div className="px-5 sm:px-6 py-5 max-h-[65vh] overflow-y-auto scroll-thin">{children}</div>
+        {footer && (
+          <div className="px-5 sm:px-6 py-4 border-t border-line flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,
@@ -92,7 +96,7 @@ export function Dropdown({ trigger, children, align = 'right', width = 'w-56', m
         <div
           onClick={() => setOpen(false)}
           className={cx(
-            'absolute z-40 mt-1.5 bg-white border border-line rounded-md shadow-pop py-1.5 animate-pop',
+            'absolute z-40 mt-1.5 bg-white border border-line rounded-md shadow-pop py-1.5 animate-scale-in',
             align === 'right' ? 'right-0' : 'left-0',
             width,
             menuClassName,
@@ -142,19 +146,23 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-ink-900/40" onClick={onClose} />
-      <div className={cx('relative bg-white w-full h-full flex flex-col shadow-pop animate-pop', width)}>
-        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-line">
-          <div>
-            <h3 className="text-[18px] font-semibold text-ink-900">{title}</h3>
-            {subtitle && <p className="hint mt-1">{subtitle}</p>}
+      <div className="absolute inset-0 bg-ink-900/40 animate-fade-in" onClick={onClose} />
+      <div className={cx('relative bg-white w-full h-full flex flex-col shadow-pop animate-slide-in-right', width)}>
+        <div className="flex items-start justify-between gap-4 px-5 sm:px-6 py-5 border-b border-line">
+          <div className="min-w-0">
+            <h3 className="text-[18px] font-bold text-ink-900">{title}</h3>
+            {subtitle && <p className="hint mt-1 truncate">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-900 p-1 -mr-1">
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-900 p-1 -mr-1 transition-colors shrink-0">
             <Icon name="x" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto scroll-thin px-6 py-5">{children}</div>
-        {footer && <div className="px-6 py-4 border-t border-line flex justify-end gap-3">{footer}</div>}
+        <div className="flex-1 overflow-y-auto scroll-thin px-5 sm:px-6 py-5">{children}</div>
+        {footer && (
+          <div className="px-5 sm:px-6 py-4 border-t border-line flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

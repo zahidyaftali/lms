@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ActivityChart, MiniBars } from '../../components/charts/Charts'
-import { Badge, Button, Icon, Modal, Progress, Select, StatRow } from '../../components/ui'
+import { Avatar, Badge, Button, Icon, Modal, Progress, Select, StatRow } from '../../components/ui'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
-import { cx, duration, shortName, timeAgo } from '../../lib/utils'
+import { useToast } from '../../context/ToastContext'
+import { cx, duration, fullName, shortName, timeAgo } from '../../lib/utils'
 
 const DOT = {
   login: 'bg-brand-700',
@@ -18,8 +19,9 @@ const DOT = {
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { users, courses, groups, enrollments, events, submissions } = useData()
+  const { users, courses, groups, enrollments, events, submissions, enrollmentRequests, actions } = useData()
   const { userById, progressOf } = useSelectors()
+  const toast = useToast()
   const [range, setRange] = useState('week')
   const [widgetsOpen, setWidgetsOpen] = useState(false)
 
@@ -84,6 +86,7 @@ export default function Dashboard() {
   )
 
   const pending = submissions.filter((s) => s.status === 'pending')
+  const pendingRequests = (enrollmentRequests || []).filter((r) => r.status === 'pending')
 
   const quickActions = [
     { icon: 'userPlus', label: 'Add user', to: '/users?new=1' },
@@ -116,7 +119,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 lg:gap-6 stagger">
         <section className="card card-pad">
           <div className="flex items-center justify-between gap-4 mb-5">
             <h2 className="card-title">Portal activity</h2>
@@ -185,6 +188,66 @@ export default function Dashboard() {
           </ul>
         </section>
 
+        <section className="card card-pad xl:col-span-2">
+          <div className="flex items-center justify-between gap-4 mb-5">
+            <h2 className="card-title">Enrollment requests</h2>
+            {pendingRequests.length > 0 && <Badge tone="amber">{pendingRequests.length} waiting</Badge>}
+          </div>
+
+          {pendingRequests.length === 0 ? (
+            <p className="hint">
+              No requests waiting. Learners who ask to join a course from the catalog appear here for approval.
+            </p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {pendingRequests.map((r) => {
+                const learner = userById(r.userId)
+                const course = courses.find((c) => c.id === r.courseId)
+                return (
+                  <li key={r.id} className="py-4 flex flex-wrap items-center gap-4 animate-fade-in">
+                    <Avatar user={learner} size={38} />
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="text-[14px]">
+                        <span className="font-semibold">{fullName(learner)}</span> asked to join{' '}
+                        <span className="font-semibold">{course?.name || 'a removed course'}</span>
+                      </p>
+                      <p className="hint mt-0.5">Requested {timeAgo(r.requestedAt)}</p>
+                      {r.note && <p className="text-[13px] text-ink-700 mt-1.5 italic">“{r.note}”</p>}
+                    </div>
+                    <div className="flex gap-2.5 ml-auto">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          actions.resolveEnrollmentRequest(r.id, false)
+                          toast('Request declined.', 'info')
+                        }}
+                      >
+                        Decline
+                      </Button>
+                      <Button
+                        size="sm"
+                        icon="check"
+                        onClick={() => {
+                          actions.resolveEnrollmentRequest(r.id, true)
+                          actions.logEvent(
+                            'user',
+                            `approved ${shortName(learner)} for ${course?.name || 'a course'}`,
+                            user.id,
+                          )
+                          toast(`${shortName(learner)} enrolled in ${course?.name || 'the course'}.`)
+                        }}
+                      >
+                        Approve
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
         <section className="card card-pad">
           <h2 className="card-title mb-5">Course enrollment</h2>
           {topCourses.length ? (
@@ -203,6 +266,13 @@ export default function Dashboard() {
               </span>
               <span className="flex-1 text-[14px]">Assignments awaiting grading</span>
               <Badge tone={pending.length ? 'amber' : 'gray'}>{pending.length}</Badge>
+            </li>
+            <li className="flex items-center gap-4">
+              <span className="w-9 h-9 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Icon name="userPlus" className="w-[18px] h-[18px]" />
+              </span>
+              <span className="flex-1 text-[14px]">Enrollment requests to review</span>
+              <Badge tone={pendingRequests.length ? 'amber' : 'gray'}>{pendingRequests.length}</Badge>
             </li>
             <li className="flex items-center gap-4">
               <span className="w-9 h-9 rounded-md bg-red-50 text-red-600 flex items-center justify-center">

@@ -54,11 +54,11 @@ export default function MyCourses() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6 stagger">
           {filtered.map(({ course, enrollment }) => {
             const value = progressOf(enrollment)
             return (
-              <article key={course.id} className="card overflow-hidden flex flex-col">
+              <article key={course.id} className="card card-interactive overflow-hidden flex flex-col">
                 <CourseHero course={course} size="sm" tags={[course.level]} />
                 <div className="p-5 flex-1 flex flex-col">
                   <div className="flex items-start gap-3 mb-2">

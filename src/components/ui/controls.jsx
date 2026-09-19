@@ -18,17 +18,31 @@ export function Button({ variant = 'primary', size, className, icon, children, .
   )
 }
 
+/**
+ * Laid out as a column with the control pinned to the bottom, so fields that
+ * sit side by side in a grid keep their inputs on the same line even when one
+ * of them carries a hint and the other does not.
+ */
 export function Field({ label, hint, error, required, children, className }) {
   return (
-    <div className={cx('mb-5', className)}>
+    <div className={cx('mb-5 flex flex-col', className)}>
       {label && (
         <label className="label">
           {label} {required && <span className="text-red-500">*</span>}
         </label>
       )}
       {hint && <p className="hint mb-2">{hint}</p>}
-      {children}
+      <div className="mt-auto">{children}</div>
       {error && <p className="text-[12.5px] text-red-600 mt-1.5">{error}</p>}
+    </div>
+  )
+}
+
+/** Checkbox/radio lists: grid rows so options never collide on one line. */
+export function OptionList({ children, columns = 2, className }) {
+  return (
+    <div className={cx('grid gap-3', columns === 2 ? 'sm:grid-cols-2' : 'grid-cols-1', className)}>
+      {children}
     </div>
   )
 }
@@ -88,14 +102,14 @@ export function Toggle({ checked, onChange, label, hint, disabled }) {
 
 export function Checkbox({ checked, onChange, label, indeterminate, className }) {
   return (
-    <label className={cx('inline-flex items-center gap-2.5 cursor-pointer select-none', className)}>
+    <label className={cx('inline-flex items-start gap-2.5 cursor-pointer select-none', className)}>
       <span
         onClick={(e) => {
           e.preventDefault()
           onChange?.(!checked)
         }}
         className={cx(
-          'w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center transition',
+          'w-[18px] h-[18px] mt-0.5 shrink-0 rounded-[4px] border flex items-center justify-center transition',
           checked || indeterminate ? 'bg-brand-700 border-brand-700 text-white' : 'border-gray-400 bg-white',
         )}
       >
@@ -105,7 +119,7 @@ export function Checkbox({ checked, onChange, label, indeterminate, className })
           <Icon name="check" className="w-3 h-3" strokeWidth={3} />
         ) : null}
       </span>
-      {label && <span className="text-[14px] text-ink-900">{label}</span>}
+      {label && <span className="text-[14px] leading-[22px] text-ink-900">{label}</span>}
     </label>
   )
 }

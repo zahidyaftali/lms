@@ -12,6 +12,7 @@ import {
   Field,
   Input,
   MenuItem,
+  OptionList,
   PageHeader,
   SearchInput,
   Textarea,
@@ -181,7 +182,7 @@ export default function Groups() {
           <Input value={draft.key} onChange={(e) => setDraft({ ...draft, key: e.target.value.toUpperCase() })} />
         </Field>
         <Field label="Courses for this group">
-          <div className="space-y-2.5">
+          <OptionList>
             {courses.map((c) => (
               <Checkbox
                 key={c.id}
@@ -197,7 +198,7 @@ export default function Groups() {
                 }
               />
             ))}
-          </div>
+          </OptionList>
         </Field>
       </Drawer>
 
