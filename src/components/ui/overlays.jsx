@@ -78,33 +78,75 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
  */
 export function Dropdown({ trigger, children, align = 'right', width = 'w-56', menuClassName }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState(null)
   const ref = useRef(null)
+  const menuRef = useRef(null)
 
+  /**
+   * The menu is rendered into a portal with fixed coordinates. Table rows sit
+   * inside a horizontal scroll container, and such a container clips absolutely
+   * positioned children — which used to cut the row menus off.
+   */
   useEffect(() => {
     if (!open) return undefined
-    const onClick = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+
+    const place = () => {
+      const rect = ref.current?.getBoundingClientRect()
+      if (!rect) return
+      const spaceBelow = window.innerHeight - rect.bottom
+      setPos({
+        top: spaceBelow < 260 ? null : rect.bottom + 6,
+        bottom: spaceBelow < 260 ? window.innerHeight - rect.top + 6 : null,
+        left: align === 'left' ? rect.left : null,
+        right: align === 'left' ? null : window.innerWidth - rect.right,
+      })
     }
-    document.addEventListener('mousedown', onClick)
-    return () => document.removeEventListener('mousedown', onClick)
-  }, [open])
+
+    place()
+    const onPointerDown = (e) => {
+      if (ref.current?.contains(e.target) || menuRef.current?.contains(e.target)) return
+      setOpen(false)
+    }
+    const onKey = (e) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, align])
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative inline-block" ref={ref}>
       <span onClick={() => setOpen((v) => !v)}>{trigger}</span>
-      {open && (
-        <div
-          onClick={() => setOpen(false)}
-          className={cx(
-            'absolute z-40 mt-1.5 bg-white border border-line rounded-md shadow-pop py-1.5 animate-scale-in',
-            align === 'right' ? 'right-0' : 'left-0',
-            width,
-            menuClassName,
-          )}
-        >
-          {children}
-        </div>
-      )}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            onClick={() => setOpen(false)}
+            style={{
+              position: 'fixed',
+              top: pos.top ?? undefined,
+              bottom: pos.bottom ?? undefined,
+              left: pos.left ?? undefined,
+              right: pos.right ?? undefined,
+            }}
+            className={cx(
+              'z-[60] bg-white border border-line rounded-md shadow-pop py-1.5 animate-scale-in',
+              align === 'right' ? 'origin-top-right' : 'origin-top-left',
+              width,
+              menuClassName,
+            )}
+          >
+            {children}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

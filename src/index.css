@@ -15,6 +15,13 @@
   * {
     -webkit-font-smoothing: antialiased;
   }
+  /* Keyboard focus gets a brand ring instead of the browser's black box. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-700/45 ring-offset-1 rounded-[3px];
+  }
 }
 
 @layer components {

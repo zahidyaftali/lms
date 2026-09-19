@@ -89,7 +89,7 @@ export function Progress({ value, className, tone = 'brand' }) {
 
 export function Tabs({ tabs, active, onChange, className }) {
   return (
-    <div className={cx('flex gap-5 sm:gap-7 border-b border-line overflow-x-auto scroll-thin', className)}>
+    <div className={cx('flex gap-5 sm:gap-7 border-b border-line overflow-x-auto overflow-y-hidden scroll-thin', className)}>
       {tabs.map((t) => (
         <button
           key={t.value}
@@ -112,7 +112,7 @@ export function Tabs({ tabs, active, onChange, className }) {
 /** Vertical tab rail used by Account & Settings. */
 export function SideTabs({ tabs, active, onChange }) {
   return (
-    <nav className="w-full lg:w-[190px] shrink-0 flex lg:block overflow-x-auto scroll-thin border-b lg:border-b-0 border-line">
+    <nav className="w-full lg:w-[190px] shrink-0 flex lg:block overflow-x-auto overflow-y-hidden lg:overflow-visible scroll-thin border-b lg:border-b-0 border-line">
       {tabs.map((t) => (
         <button
           key={t.value}
@@ -168,7 +168,7 @@ export function DataTable({
     onSelectedChange?.(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
 
   return (
-    <div className="w-full overflow-x-auto scroll-thin">
+    <div className="w-full overflow-x-auto overflow-y-hidden scroll-thin">
       <table className="w-full min-w-[720px] border-collapse">
         <thead>
           <tr className="table-head border-y border-line">
