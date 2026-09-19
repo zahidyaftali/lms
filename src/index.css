@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-white text-ink-900 font-sans antialiased;
+  }
+  * {
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white border border-line rounded-card shadow-card;
+  }
+  .card-pad {
+    @apply p-6;
+  }
+  .card-title {
+    @apply text-[17px] font-semibold text-ink-900;
+  }
+  .page-title {
+    @apply text-[28px] leading-9 font-semibold text-ink-900;
+  }
+  .label {
+    @apply block text-[13px] font-medium text-ink-900 mb-1.5;
+  }
+  .hint {
+    @apply text-[12.5px] text-ink-500 leading-5;
+  }
+  .field {
+    @apply w-full h-11 px-3.5 rounded-md border border-line bg-white text-[14px] text-ink-900
+           placeholder:text-ink-400 outline-none transition
+           focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15;
+  }
+  .field-lg {
+    @apply h-12;
+  }
+  textarea.field {
+    @apply h-auto py-3 leading-6;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-11 px-5 rounded-md text-[14px] font-medium
+           transition select-none disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap;
+  }
+  .btn-primary {
+    @apply btn bg-brand-700 text-white hover:bg-brand-800 active:bg-brand-900;
+  }
+  .btn-outline {
+    @apply btn bg-white text-brand-700 border border-brand-700 hover:bg-brand-50;
+  }
+  .btn-ghost {
+    @apply btn bg-white text-ink-700 border border-line hover:bg-gray-50;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-sm {
+    @apply h-9 px-3.5 text-[13px];
+  }
+  .link {
+    @apply text-brand-700 hover:underline;
+  }
+  .table-head {
+    @apply bg-gray-50 text-[13px] font-semibold text-ink-900;
+  }
+  .row-hover {
+    @apply hover:bg-brand-50/40;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded;
+  }
+  .scroll-thin::-webkit-scrollbar-track {
+    @apply bg-gray-100;
+  }
+}
+
+.animate-pop {
+  animation: pop 0.14s ease-out;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Rendered lesson content (rich text units and the editor surface) */
+.prose-unit h2 {
+  @apply text-[20px] font-semibold text-ink-900 mt-6 mb-3 first:mt-0;
+}
+.prose-unit h3 {
+  @apply text-[16.5px] font-semibold text-ink-900 mt-5 mb-2;
+}
+.prose-unit p {
+  @apply mb-4 last:mb-0;
+}
+.prose-unit ul {
+  @apply list-disc pl-6 mb-4 space-y-1.5;
+}
+.prose-unit ol {
+  @apply list-decimal pl-6 mb-4 space-y-1.5;
+}
+.prose-unit a {
+  @apply text-brand-700 underline;
+}
+.prose-unit strong {
+  @apply font-semibold;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .fixed [class*='border-double'],
+  .fixed [class*='border-double'] * {
+    visibility: visible;
+  }
+}
