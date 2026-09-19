@@ -120,5 +120,6 @@ src/
 ## Branding
 
 Colours, fonts and spacing are defined in `tailwind.config.js` and `src/index.css` — navy `#012053`,
-action blue `#1a56db`, GA gold `#c9a227`, Poppins throughout. Upload a logo file in
+action blue `#1a56db`, rail blue `#1052a8`, GA gold `#c9a227`, and Mulish throughout (700 at 23px/30px
+for page headings, 700 at 16px/21px for widget titles, 400 at 14px/22px for body copy). Upload a logo file in
 **Account & Settings → Portal → Branding** to replace the built-in wordmark everywhere.
