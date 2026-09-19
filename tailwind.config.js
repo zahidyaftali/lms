@@ -4,9 +4,15 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Poppins', 'Segoe UI', 'Helvetica Neue', 'Arial', 'sans-serif'],
+        sans: ['Mulish', 'Arial', 'Helvetica Neue', 'sans-serif'],
       },
       colors: {
+        /* Left navigation: royal blue rail with a darker active row. */
+        rail: {
+          DEFAULT: '#1052a8',
+          hover: '#1a5cb4',
+          active: '#0a3c86',
+        },
         navy: {
           50: '#eef3fb',
           100: '#d6e2f5',
@@ -38,20 +44,22 @@ export default {
           600: '#a8851d',
         },
         ink: {
-          900: '#111827',
-          700: '#374151',
-          500: '#6b7280',
-          400: '#9ca3af',
+          900: '#232323',
+          700: '#4f4f4f',
+          500: '#757575',
+          400: '#a0a0a0',
         },
-        line: '#e5e7eb',
+        /* Hairline used for every card, table and input border. */
+        line: '#ededf1',
+        'line-strong': '#e2e4ea',
         canvas: '#ffffff',
       },
       boxShadow: {
-        card: '0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)',
-        pop: '0 10px 30px rgba(16,24,40,0.12)',
+        card: '0 1px 2px rgba(16, 24, 40, 0.03)',
+        pop: '0 8px 28px rgba(16, 24, 40, 0.10)',
       },
       borderRadius: {
-        card: '10px',
+        card: '8px',
       },
     },
   },

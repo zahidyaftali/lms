@@ -291,6 +291,28 @@ export default function Users() {
         selected={selected}
         onSelectedChange={setSelected}
         defaultSort={{ key: 'user', dir: 'asc' }}
+        quickActions={(u) => [
+          { icon: 'eye', title: 'View profile', onClick: () => navigate(`/users/${u.id}`) },
+          { icon: 'book', title: 'Enroll in course', onClick: () => setEnrollTarget([u.id]) },
+          { icon: 'pencil', title: 'Edit', onClick: () => openEdit(u) },
+          {
+            icon: 'trash',
+            title: 'Delete',
+            danger: true,
+            onClick: () =>
+              u.id === me.id
+                ? toast('You cannot delete the account you are signed in with.', 'info')
+                : setConfirm({
+                    title: 'Delete user',
+                    message: `Delete ${fullName(u)}? This also removes their course progress.`,
+                    onConfirm: () => {
+                      actions.deleteUsers([u.id])
+                      actions.logEvent('delete', `deleted the account of ${shortName(u)}`, me.id)
+                      toast('User deleted.')
+                    },
+                  }),
+          },
+        ]}
         empty={
           <EmptyState
             icon="users"

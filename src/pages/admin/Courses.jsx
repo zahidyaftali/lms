@@ -177,6 +177,41 @@ export default function Courses() {
         selected={selected}
         onSelectedChange={setSelected}
         defaultSort={{ key: 'name', dir: 'asc' }}
+        quickActions={(c) => [
+          { icon: 'eye', title: 'Open course', onClick: () => navigate(`/courses/${c.id}`) },
+          { icon: 'report', title: 'Course report', onClick: () => navigate('/reports') },
+          ...(isInstructorView
+            ? []
+            : [
+                {
+                  icon: 'copy',
+                  title: 'Duplicate',
+                  onClick: () => {
+                    const copy = actions.duplicateCourse(c.id)
+                    toast(`${copy.name} created.`)
+                  },
+                },
+              ]),
+          { icon: 'pencil', title: 'Edit content', onClick: () => navigate(`/courses/${c.id}`) },
+          ...(isInstructorView
+            ? []
+            : [
+                {
+                  icon: 'trash',
+                  title: 'Delete',
+                  danger: true,
+                  onClick: () =>
+                    setConfirm({
+                      title: 'Delete course',
+                      message: `Delete ${c.name}? Learner progress in this course will be removed.`,
+                      onConfirm: () => {
+                        actions.deleteCourses([c.id])
+                        toast('Course deleted.')
+                      },
+                    }),
+                },
+              ]),
+        ]}
         empty={
           <EmptyState
             icon="book"

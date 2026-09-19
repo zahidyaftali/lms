@@ -9,7 +9,8 @@
     height: 100%;
   }
   body {
-    @apply bg-white text-ink-900 font-sans antialiased;
+    /* Portal body copy: Mulish 400, 14px / 22px, #232323 */
+    @apply bg-white text-ink-900 font-sans antialiased text-[14px] leading-[22px];
   }
   * {
     -webkit-font-smoothing: antialiased;
@@ -23,20 +24,23 @@
   .card-pad {
     @apply p-6;
   }
+  /* Widget heading: Mulish 700, 16px / 21px */
   .card-title {
-    @apply text-[17px] font-semibold text-ink-900;
+    @apply text-[16px] leading-[21px] font-bold text-ink-900;
   }
+  /* Page heading: Mulish 700, 23px / 30px */
   .page-title {
-    @apply text-[28px] leading-9 font-semibold text-ink-900;
+    @apply text-[23px] leading-[30px] font-bold text-ink-900;
   }
   .label {
-    @apply block text-[13px] font-medium text-ink-900 mb-1.5;
+    @apply block text-[13px] font-semibold text-ink-900 mb-1.5;
   }
   .hint {
-    @apply text-[12.5px] text-ink-500 leading-5;
+    @apply text-[13px] text-ink-500 leading-[20px];
   }
+  /* Inputs keep a slightly stronger hairline than cards so fields stay findable. */
   .field {
-    @apply w-full h-11 px-3.5 rounded-md border border-line bg-white text-[14px] text-ink-900
+    @apply w-full h-11 px-3.5 rounded-md border border-[#d9dce2] bg-white text-[14px] text-ink-900
            placeholder:text-ink-400 outline-none transition
            focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15;
   }
@@ -57,7 +61,7 @@
     @apply btn bg-white text-brand-700 border border-brand-700 hover:bg-brand-50;
   }
   .btn-ghost {
-    @apply btn bg-white text-ink-700 border border-line hover:bg-gray-50;
+    @apply btn bg-white text-ink-700 border border-[#d9dce2] hover:bg-gray-50;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
@@ -69,20 +73,20 @@
     @apply text-brand-700 hover:underline;
   }
   .table-head {
-    @apply bg-gray-50 text-[13px] font-semibold text-ink-900;
+    @apply bg-[#f7f8fa] text-[14px] leading-[22px] font-bold text-ink-900;
   }
   .row-hover {
     @apply hover:bg-brand-50/40;
   }
   .scroll-thin::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
   }
   .scroll-thin::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded;
+    @apply bg-gray-300 rounded-full;
   }
   .scroll-thin::-webkit-scrollbar-track {
-    @apply bg-gray-100;
+    @apply bg-transparent;
   }
 }
 

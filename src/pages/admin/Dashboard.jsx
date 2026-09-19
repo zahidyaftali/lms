@@ -48,12 +48,19 @@ export default function Dashboard() {
       if (b) b.completions += 1
     })
 
-    const show = range === 'week' ? buckets : buckets.filter((_, i) => i % 4 === 0)
-    return show.map((b) => ({
-      ...b,
-      label: b.date.toLocaleDateString(undefined, { weekday: range === 'week' ? 'long' : undefined, month: range === 'week' ? undefined : 'short' }),
-      sublabel: b.date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }),
-    }))
+    // Every bar is drawn, but only every third gets an axis label so the
+    // two-line date captions never collide.
+    const show = range === 'week' ? buckets : buckets.filter((_, i) => i % 2 === 0)
+    return show.map((b, i) => {
+      const labelled = i % 3 === 0
+      return {
+        ...b,
+        label: labelled
+          ? b.date.toLocaleDateString(undefined, range === 'week' ? { weekday: 'long' } : { month: 'short' })
+          : '',
+        sublabel: labelled ? b.date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) : '',
+      }
+    })
   }, [events, enrollments, range])
 
   const activeUsers = users.filter((u) => u.active).length
@@ -90,7 +97,7 @@ export default function Dashboard() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-7">
         <h1 className="page-title flex items-center gap-3">
-          <span className="text-[26px]" aria-hidden="true">
+          <span className="text-[22px]" aria-hidden="true">
             🎉
           </span>
           Welcome, {user.firstName.toLowerCase()}!
@@ -133,7 +140,7 @@ export default function Dashboard() {
                   <span className="text-ink-700 group-hover:text-brand-700">
                     <Icon name={a.icon} className="w-[22px] h-[22px]" strokeWidth={1.5} />
                   </span>
-                  <span className="text-[14.5px] text-ink-900 group-hover:text-brand-700">{a.label}</span>
+                  <span className="text-[14px] leading-[22px] font-semibold text-ink-900 group-hover:text-brand-700">{a.label}</span>
                 </button>
               </li>
             ))}
@@ -142,7 +149,7 @@ export default function Dashboard() {
 
         <section className="card card-pad">
           <h2 className="card-title mb-3">Overview</h2>
-          <div className="divide-y divide-line/70">
+          <div>
             <StatRow icon="users" label="Active users" value={activeUsers} />
             <StatRow icon="book" label="Assigned courses" value={assignedCourses} />
             <StatRow icon="group" label="Groups" value={groups.length} />
@@ -159,19 +166,19 @@ export default function Dashboard() {
             <h2 className="card-title">Timeline</h2>
             <Icon name="chevronRight" className="w-4 h-4" strokeWidth={2.2} />
           </button>
-          <ul className="max-h-[260px] overflow-y-auto scroll-thin pr-2 divide-y divide-line/60">
+          <ul className="max-h-[260px] overflow-y-auto scroll-thin pr-2">
             {events.slice(0, 20).map((ev) => {
               const actor = userById(ev.actorId)
               return (
-                <li key={ev.id} className="flex items-start gap-3 py-2.5">
-                  <span className={cx('w-2 h-2 rounded-full mt-2 shrink-0', DOT[ev.type] || 'bg-gray-400')} />
-                  <p className="flex-1 text-[13.5px] text-ink-900 leading-5">
+                <li key={ev.id} className="flex items-center gap-3 py-2">
+                  <span className={cx('w-2 h-2 rounded-full shrink-0', DOT[ev.type] || 'bg-gray-400')} />
+                  <p className="flex-1 min-w-0 truncate text-[14px] leading-[22px] text-ink-900">
                     <span className="font-semibold">
                       {actor?.id === user.id ? 'You' : shortName(actor)}
                     </span>{' '}
                     {ev.text}
                   </p>
-                  <span className="text-[12px] text-ink-400 italic whitespace-nowrap">{timeAgo(ev.at)}</span>
+                  <span className="text-[12.5px] text-ink-400 italic whitespace-nowrap shrink-0">{timeAgo(ev.at)}</span>
                 </li>
               )
             })}

@@ -139,6 +139,8 @@ export function DataTable({
   selected = [],
   onSelectedChange,
   actions,
+  /** Icons revealed on row hover, in place of the "..." menu. */
+  quickActions,
   empty,
   defaultSort,
   onRowClick,
@@ -198,45 +200,77 @@ export function DataTable({
                 )}
               </th>
             ))}
-            {actions && <th className="w-14 px-4 py-3.5" />}
+            {(actions || quickActions) && <th className="px-4 py-3.5" />}
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row, index) => (
-            <tr
-              key={rowKey(row)}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cx(
-                'border-b border-line/70 text-[14px] text-ink-900',
-                index % 2 === 1 && 'bg-gray-50/70',
-                onRowClick && 'cursor-pointer hover:bg-brand-50/50',
-              )}
-            >
-              {selectable && (
-                <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                  <Checkbox checked={selected.includes(rowKey(row))} onChange={() => toggleOne(rowKey(row))} />
-                </td>
-              )}
-              {columns.map((col) => (
-                <td key={col.key} className={cx('px-4 py-3.5 align-middle', col.cellClassName)}>
-                  {col.render ? col.render(row) : (row[col.key] ?? '-')}
-                </td>
-              ))}
-              {actions && (
-                <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                  <Dropdown
-                    trigger={
-                      <button className="p-1.5 rounded text-ink-700 hover:bg-gray-100">
-                        <Icon name="dots" strokeWidth={2.6} />
-                      </button>
-                    }
-                  >
-                    {actions(row)}
-                  </Dropdown>
-                </td>
-              )}
-            </tr>
-          ))}
+          {sorted.map((row, index) => {
+            const key = rowKey(row)
+            const isSelected = selected.includes(key)
+            return (
+              <tr
+                key={key}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cx(
+                  'group/row border-b border-line text-[14px] leading-[22px] text-ink-900 transition-colors',
+                  index % 2 === 1 && 'bg-[#f8f9fb]',
+                  isSelected ? 'bg-brand-50' : 'hover:bg-brand-50/70',
+                  onRowClick && 'cursor-pointer',
+                )}
+              >
+                {selectable && (
+                  <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                    {/* Row checkboxes stay hidden until the row is hovered or picked. */}
+                    <span className={cx('block transition-opacity', isSelected ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100')}>
+                      <Checkbox checked={isSelected} onChange={() => toggleOne(key)} />
+                    </span>
+                  </td>
+                )}
+                {columns.map((col) => (
+                  <td key={col.key} className={cx('px-4 py-3.5 align-middle', col.cellClassName)}>
+                    {col.render ? col.render(row) : (row[col.key] ?? '-')}
+                  </td>
+                ))}
+                {(actions || quickActions) && (
+                  <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <span className="inline-flex items-center justify-end gap-0.5">
+                      {quickActions && (
+                        <span className="hidden group-hover/row:inline-flex items-center gap-0.5">
+                          {quickActions(row).map((a) => (
+                            <button
+                              key={a.title}
+                              title={a.title}
+                              aria-label={a.title}
+                              onClick={a.onClick}
+                              className={cx(
+                                'p-1.5 rounded transition',
+                                a.danger ? 'text-ink-700 hover:text-red-600 hover:bg-red-50' : 'text-ink-700 hover:text-brand-700 hover:bg-white',
+                              )}
+                            >
+                              <Icon name={a.icon} className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                      {actions && (
+                        <span className={quickActions ? 'group-hover/row:hidden' : ''}>
+                          <Dropdown
+                            trigger={
+                              <button className="p-1.5 rounded text-ink-700 hover:bg-gray-100">
+                                <Icon name="dots" strokeWidth={2.6} />
+                              </button>
+                            }
+                          >
+                            {actions(row)}
+                          </Dropdown>
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                )}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       {rows.length === 0 && (empty || <EmptyState title="Nothing to show yet" message="Try adjusting your search or filters." />)}
@@ -250,8 +284,8 @@ export function StatRow({ icon, label, value }) {
       <span className="text-ink-700">
         <Icon name={icon} className="w-[22px] h-[22px]" strokeWidth={1.5} />
       </span>
-      <span className="flex-1 text-[14.5px] text-ink-900">{label}</span>
-      <span className="text-[15px] font-semibold text-ink-900">{value}</span>
+      <span className="flex-1 text-[14px] leading-[22px] text-ink-900">{label}</span>
+      <span className="text-[16px] leading-[21px] font-bold text-ink-900">{value}</span>
     </div>
   )
 }

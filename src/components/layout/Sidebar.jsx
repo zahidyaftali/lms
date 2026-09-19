@@ -39,7 +39,7 @@ export default function Sidebar({ collapsed, onHelp }) {
   return (
     <aside
       className={cx(
-        'bg-navy-900 text-white shrink-0 flex flex-col transition-all duration-200',
+        'bg-rail text-white shrink-0 flex flex-col transition-all duration-200',
         collapsed ? 'w-[76px]' : 'w-[256px]',
       )}
     >
@@ -55,13 +55,13 @@ export default function Sidebar({ collapsed, onHelp }) {
                 'relative flex items-center gap-3.5 h-12 rounded-md transition-colors',
                 collapsed ? 'justify-center px-0' : 'px-4',
                 isActive
-                  ? 'bg-navy-600 text-white font-medium shadow-[inset_3px_0_0_0_#ffffff]'
-                  : 'text-white/85 hover:bg-white/10',
+                  ? 'bg-rail-active text-white font-semibold'
+                  : 'text-white hover:bg-rail-hover',
               )
             }
           >
             <Icon name={item.icon} className="w-[21px] h-[21px] shrink-0" strokeWidth={1.6} />
-            {!collapsed && <span className="text-[14.5px] truncate">{item.label}</span>}
+            {!collapsed && <span className="text-[14px] leading-[22px] truncate">{item.label}</span>}
           </NavLink>
         ))}
       </nav>
@@ -70,12 +70,12 @@ export default function Sidebar({ collapsed, onHelp }) {
         <button
           onClick={onHelp}
           className={cx(
-            'w-full flex items-center gap-3.5 h-12 rounded-md bg-navy-700 hover:bg-navy-600 transition-colors',
+            'w-full flex items-center gap-3.5 h-12 rounded-md bg-rail-hover hover:bg-rail-active transition-colors',
             collapsed ? 'justify-center px-0' : 'px-4',
           )}
         >
           <Icon name="help" className="w-[21px] h-[21px] shrink-0" strokeWidth={1.6} />
-          {!collapsed && <span className="text-[14.5px]">Help Center</span>}
+          {!collapsed && <span className="text-[14px] leading-[22px]">Help Center</span>}
         </button>
       </div>
     </aside>
