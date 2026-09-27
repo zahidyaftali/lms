@@ -1,0 +1,13 @@
+# Media must never go through line-ending conversion (core.autocrlf would corrupt them).
+*.pdf binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.zip binary
