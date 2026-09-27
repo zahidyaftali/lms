@@ -37,12 +37,14 @@ export const withoutPassword = ({ password, ...rest }) => rest
 
 /** Rows from the store -> { settings, meta, collections } */
 export function assemble(rows) {
-  const db = { settings: null, meta: {}, collections: Object.fromEntries(COLLECTIONS.map((c) => [c, []])) }
+  const db = { settings: null, meta: {}, auditLog: [], collections: Object.fromEntries(COLLECTIONS.map((c) => [c, []])) }
   for (const { collection, id, data } of rows) {
     if (collection === 'settings') db.settings = data
     else if (collection === 'meta') db.meta[id] = data
+    else if (collection === 'auditLog') db.auditLog.push(data)
     else if (db.collections[collection]) db.collections[collection].push(data)
   }
+  db.auditLog.sort((a, b) => (a.at < b.at ? 1 : -1))
   return db
 }
 
@@ -77,6 +79,7 @@ export function viewFor(db, me) {
       submissions: c.submissions,
       certificates: c.certificates,
       enrollmentRequests: c.enrollmentRequests,
+      auditLog: isAdmin(me) ? db.auditLog : [],
     }
   }
 

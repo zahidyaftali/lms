@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Field, Icon, Input, Modal } from '../components/ui'
+import { Button, Field, Icon, Input } from '../components/ui'
 import Logo from '../components/layout/Logo'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -14,7 +14,6 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -124,28 +123,15 @@ export default function Login() {
             </Button>
           </form>
 
-          <button onClick={() => setHelpOpen(true)} className="link text-[13.5px] mt-5 inline-block">
-            Forgot your password?
-          </button>
-
           <div className="mt-10 pt-6 border-t border-line">
             <p className="text-[13px] text-ink-500 leading-6">
               New students do not sign up here. Your account is created by the program office and your login
-              details are emailed to you.
+              details are emailed to you. If you forget your password, contact the program office for a new one.
             </p>
           </div>
         </div>
       </div>
 
-      <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Password help" width="max-w-md">
-        <p className="text-[14px] text-ink-700 leading-6">
-          Passwords are reset by an administrator. Email{' '}
-          <a className="link" href={`mailto:${settings.supportEmail}`}>
-            {settings.supportEmail}
-          </a>{' '}
-          or call {settings.supportPhone} and a new password will be issued to you.
-        </p>
-      </Modal>
 
     </div>
   )

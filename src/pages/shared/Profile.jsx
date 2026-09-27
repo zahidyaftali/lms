@@ -12,8 +12,9 @@ import {
 } from '../../components/ui'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
+import { isAdmin } from '../../lib/permissions'
 import { useToast } from '../../context/ToastContext'
-import { readAsDataURL } from '../../lib/fileStore'
+import { shrinkImage } from '../../lib/fileStore'
 import { duration, formatDate, fullName } from '../../lib/utils'
 import { passwordProblem } from '../../components/users/AccountDialogs'
 
@@ -68,7 +69,8 @@ export default function Profile() {
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
-                  if (file) setDraft({ ...draft, avatar: await readAsDataURL(file) })
+                  if (file && file.type.startsWith('image/'))
+                    setDraft({ ...draft, avatar: await shrinkImage(file, { maxWidth: 256, maxHeight: 256 }) })
                   e.target.value = ''
                 }}
               />
@@ -97,7 +99,8 @@ export default function Profile() {
             <Tabs
               tabs={[
                 { value: 'details', label: 'Details' },
-                { value: 'security', label: 'Password' },
+                // Learners and instructors ask an administrator for a new password.
+                ...(isAdmin(user) ? [{ value: 'security', label: 'Password' }] : []),
                 { value: 'training', label: 'Training record', count: enrollments.length },
               ]}
               active={tab}

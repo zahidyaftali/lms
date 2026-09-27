@@ -11,7 +11,7 @@ import { cx, plural } from '../../lib/utils'
  * still sitting in this browser from before the database was connected.
  */
 export default function StorageNotice() {
-  const { backend, syncProblem, localCopy } = useData()
+  const { backend, syncProblem, storageFull, localCopy } = useData()
   const { user } = useAuth()
   const admin = isAdmin(user)
 
@@ -22,6 +22,9 @@ export default function StorageNotice() {
   if (backend.mode === 'server' && syncProblem) {
     tone = 'red'
     text = `Your latest changes have not been saved yet — ${syncProblem} Retrying…`
+  } else if (backend.mode === 'local' && storageFull) {
+    tone = 'red'
+    text = 'This browser’s storage is full, so your latest changes were not saved and will be lost on reload. Remove large images (such as the logo) or connect the shared database.'
   } else if (admin && backend.mode === 'local' && backend.api) {
     text =
       'No shared database is connected, so accounts and changes are saved in this browser only. Students on other devices cannot sign in until one is connected in Vercel.'

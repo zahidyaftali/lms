@@ -10,12 +10,14 @@ export function loadState() {
   }
 }
 
+/** Returns false when the browser refused to store it (usually because its storage is full). */
 export function saveState(state) {
   try {
     localStorage.setItem(KEY, JSON.stringify(state))
+    return true
   } catch (err) {
-    // Quota is the realistic failure here: large media lives in IndexedDB, not this store.
     console.warn('Could not persist portal state', err)
+    return false
   }
 }
 

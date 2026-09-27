@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { loadState, saveState, clearState } from '../lib/storage'
+import { loadSession, loadState, saveState, clearState } from '../lib/storage'
+import { auditFor, mergeAudit } from '../lib/audit'
 import { buildSeed } from '../lib/seed'
 import { COURSE_DEFAULTS } from '../lib/courseDefaults'
 import { applyCourseImport } from '../lib/importedCourses'
@@ -23,6 +24,7 @@ export function DataProvider({ children }) {
   const [backend, setBackend] = useState({ mode: 'pending' })
   const [me, setMe] = useState(null)
   const [syncProblem, setSyncProblem] = useState(null)
+  const [storageFull, setStorageFull] = useState(false)
   const [state, setState] = useState(() => emptyState())
   const stateRef = useRef(state)
   stateRef.current = state
@@ -133,8 +135,21 @@ export function DataProvider({ children }) {
     }
   }, [reload])
 
+  // Without a database the browser keeps the History itself (the server does it otherwise).
+  const auditBase = useRef(null)
   useEffect(() => {
-    if (backend.mode === 'local') saveState(state)
+    if (backend.mode !== 'local') return
+    const before = auditBase.current
+    auditBase.current = state
+    if (!before || before === state) return
+    const actor = state.users.find((u) => u.id === loadSession()?.userId)
+    if (!actor) return
+    const entries = auditFor(before, state, { actor, at: new Date().toISOString(), makeId: () => uid('au') })
+    if (entries.length) setState((prev) => ({ ...prev, auditLog: mergeAudit(prev.auditLog || [], entries).log }))
+  }, [state, backend.mode])
+
+  useEffect(() => {
+    if (backend.mode === 'local') setStorageFull(!saveState(state))
     else if (backend.mode === 'server' && backend.status === 'ready') {
       clearTimeout(sync.current.timer)
       sync.current.timer = setTimeout(pushChanges, 250)
@@ -616,6 +631,7 @@ export function DataProvider({ children }) {
       backend,
       me,
       syncProblem,
+      storageFull,
       localCopy,
       actions: {
         signIn,
@@ -654,6 +670,7 @@ export function DataProvider({ children }) {
       backend,
       me,
       syncProblem,
+      storageFull,
       localCopy,
       signIn,
       signOut,

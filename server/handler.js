@@ -12,7 +12,8 @@
  *   POST /api/password       { current, next } for the signed-in user
  */
 import { getStore, storeKind } from './store.js'
-import { COLLECTIONS, assemble, authorize, publicSettings, viewFor, withoutPassword } from './access.js'
+import { COLLECTIONS, assemble, authorize, isAdmin, publicSettings, viewFor, withoutPassword } from './access.js'
+import { auditFor, mergeAudit } from '../src/lib/audit.js'
 import {
   clearedCookie,
   createToken,
@@ -100,6 +101,32 @@ async function loadDb(store) {
   return assemble(await store.all())
 }
 
+/**
+ * Writes History entries for the users, courses and settings a change touched.
+ * The actor is always the signed-in user, never something the browser claims.
+ */
+async function recordHistory(store, db, me, plan, passwordUserIds) {
+  const before = { users: db.collections.users, courses: db.collections.courses, settings: db.settings }
+  const apply = (list, coll) => {
+    const byId = new Map(list.map((r) => [r.id, r]))
+    plan.upserts.filter((u) => u.collection === coll).forEach((u) => byId.set(u.id, u.data))
+    plan.deletes.filter((d) => d.collection === coll).forEach((d) => byId.delete(d.id))
+    return [...byId.values()]
+  }
+  const settings = plan.upserts.find((u) => u.collection === 'settings')?.data || db.settings
+  const after = { users: apply(before.users, 'users'), courses: apply(before.courses, 'courses'), settings }
+  const entries = auditFor(before, after, {
+    actor: me,
+    passwords: passwordUserIds,
+    at: new Date().toISOString(),
+    makeId: () => `au_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+  })
+  if (!entries.length) return
+  const { stored, dropped } = mergeAudit(db.auditLog, entries)
+  await store.upsert(stored.map((e) => ({ collection: 'auditLog', id: e.id, data: e })))
+  await store.remove(dropped.map((id) => ({ collection: 'auditLog', id })))
+}
+
 /** The signed-in user, or a 401. Deactivated accounts and changed passwords end the session. */
 async function currentUser(req, store, secret) {
   const token = readToken(secret, readCookie(req))
@@ -184,6 +211,7 @@ const routes = {
     await store.remove(plan.deletes)
     await store.removeHashes(plan.deletes.filter((d) => d.collection === 'users').map((d) => d.id))
     await store.setHashes(hashes)
+    await recordHistory(store, db, me, plan, hashes.map((h) => h.userId))
 
     // An admin who changes their own password stays signed in on this device.
     const headers = {}
@@ -196,6 +224,8 @@ const routes = {
     if (req.method !== 'POST') throw new HttpError(405, 'Use POST.')
     const { store, secret } = await openStore()
     const me = await currentUser(req, store, secret)
+    // Passwords are managed by administrators; everyone else asks them for a new one.
+    if (!isAdmin(me)) throw new HttpError(403, 'Only an administrator can change passwords.')
     const { current = '', next = '' } = await readJson(req)
     if (!(await verifyPassword(String(current), await store.getHash(me.id))))
       throw new HttpError(400, 'Your current password is not correct.')
@@ -204,6 +234,8 @@ const routes = {
     if (problem) throw new HttpError(400, problem)
     const hash = await hashPassword(next)
     await store.setHashes([{ userId: me.id, hash }])
+    const db = await loadDb(store)
+    await recordHistory(store, db, me, { upserts: [], deletes: [] }, [me.id])
     send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, createToken(secret, me.id, hash)) })
   },
 }

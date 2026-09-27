@@ -56,6 +56,29 @@ export async function deleteFile(id) {
   store.delete(id)
 }
 
+/**
+ * Logos are sent to every visitor with the portal settings, so they are scaled
+ * to fit maxWidth x maxHeight first. Small SVGs are kept as they are.
+ */
+export async function shrinkImage(file, { maxWidth = 640, maxHeight = 200 } = {}) {
+  const original = await readAsDataURL(file)
+  if (file.type === 'image/svg+xml' && file.size < 150 * 1024) return original
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image()
+    el.onload = () => resolve(el)
+    el.onerror = reject
+    el.src = original
+  })
+  const scale = Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+  const png = canvas.toDataURL('image/png')
+  if (png.length < 300 * 1024) return png
+  return canvas.toDataURL('image/webp', 0.9)
+}
+
 /** Small images (logos, avatars, course covers) are kept inline as data URLs. */
 export function readAsDataURL(file) {
   return new Promise((resolve, reject) => {

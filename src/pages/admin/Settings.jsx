@@ -17,7 +17,8 @@ import Logo from '../../components/layout/Logo'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
-import { readAsDataURL } from '../../lib/fileStore'
+import { shrinkImage } from '../../lib/fileStore'
+import SettingsHistory from './SettingsHistory'
 import { download, plural, uid } from '../../lib/utils'
 
 const TABS = [
@@ -28,6 +29,7 @@ const TABS = [
   { value: 'categories', label: 'Categories' },
   { value: 'security', label: 'Security' },
   { value: 'importexport', label: 'Import-Export' },
+  { value: 'history', label: 'History' },
 ]
 
 export default function Settings() {
@@ -78,11 +80,12 @@ export default function Settings() {
           {tab === 'categories' && <CategoriesTab />}
           {tab === 'security' && <SecurityTab draft={draft} setGroup={setGroup} />}
           {tab === 'importexport' && <ImportExportTab />}
+          {tab === 'history' && <SettingsHistory />}
         </div>
       </div>
 
       {showFooter && (
-        <div className="sticky bottom-0 z-10 bg-white border-t border-line px-4 sm:px-6 lg:px-10 py-4 flex gap-4">
+        <div className="sticky bottom-0 z-10 bg-white border-t border-line px-4 sm:px-6 lg:pr-10 lg:pl-[230px] py-4 flex gap-4">
           <Button onClick={save} disabled={!dirty}>
             Save
           </Button>
@@ -153,7 +156,7 @@ function PortalTab({ draft, set }) {
       </Section>
 
       <Section title="Branding">
-        <SettingRow label="Logo" hint="Accepted file format: gif, jpg, jpeg, png. Size: 3MB">
+        <SettingRow label="Logo" hint="PNG, JPG, GIF or SVG. Large images are resized to fit. Shown to everyone once you save.">
           <div className="flex items-center gap-4">
             <span className="flex-1">
               {draft.logo ? <img src={draft.logo} alt="Portal logo" className="h-12" /> : <Logo size="sm" />}
@@ -166,7 +169,7 @@ function PortalTab({ draft, set }) {
                 className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
-                  if (file) set({ logo: await readAsDataURL(file) })
+                  if (file && file.type.startsWith('image/')) set({ logo: await shrinkImage(file) })
                   e.target.value = ''
                 }}
               />
@@ -247,9 +250,6 @@ function UsersTab({ draft, setGroup }) {
             value={u.passwordMinLength}
             onChange={(e) => setGroup('users', { passwordMinLength: Number(e.target.value) })}
           />
-        </SettingRow>
-        <SettingRow label="Force password change on first login">
-          <Toggle checked={u.forcePasswordReset} onChange={(v) => setGroup('users', { forcePasswordReset: v })} />
         </SettingRow>
         <SettingRow label="Deactivate after inactivity (days)" hint="0 keeps accounts active indefinitely.">
           <Input

@@ -39,6 +39,16 @@ Only administrators create accounts (Users → Add user, or Import user(s)); the
   new account's details are listed once after the import, with a CSV download.
 - Passwords must be at least the minimum length in Account & Settings → Users (8 by default) and cannot
   start or end with a space.
+- Only administrators change passwords. Learners and instructors have no Password tab and there is no
+  "Forgot password" link; they ask the program office.
+
+### History
+
+**Account & Settings → History** (administrators only) lists who created, edited or deleted users and
+courses, who set whose password, and who changed portal settings, with the details of each edit. With the
+shared database the server writes every entry itself, naming the signed-in user; passwords are never
+recorded. Repeated edits of the same thing by the same person within ten minutes are grouped into one line,
+and the latest 2,000 entries are kept. Export downloads the filtered list as CSV.
 
 ## Access levels
 

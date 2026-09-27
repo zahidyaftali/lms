@@ -109,10 +109,10 @@ export function Tabs({ tabs, active, onChange, className }) {
   )
 }
 
-/** Vertical tab rail used by Account & Settings. */
+/** Vertical tab rail used by Account & Settings — tinted so it reads apart from the white page. */
 export function SideTabs({ tabs, active, onChange }) {
   return (
-    <nav className="w-full lg:w-[190px] shrink-0 flex lg:block overflow-x-auto overflow-y-hidden lg:overflow-visible scroll-thin border-b lg:border-b-0 border-line">
+    <nav className="w-full lg:w-[190px] shrink-0 flex lg:block overflow-x-auto overflow-y-hidden lg:overflow-visible scroll-thin bg-[#f3f4f7] border-b lg:border-b-0 lg:border-r border-line">
       {tabs.map((t) => (
         <button
           key={t.value}
@@ -121,7 +121,7 @@ export function SideTabs({ tabs, active, onChange }) {
             'whitespace-nowrap text-left px-4 py-3 text-[14px] transition-colors lg:w-full',
             active === t.value
               ? 'bg-navy-900 text-white font-medium'
-              : 'text-ink-700 hover:bg-gray-50',
+              : 'text-ink-700 hover:bg-[#e7e9ee] hover:text-ink-900',
           )}
         >
           {t.label}

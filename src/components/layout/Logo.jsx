@@ -8,8 +8,13 @@ import { cx } from '../../lib/utils'
 export default function Logo({ className, boxed = true, size = 'md', inverted = false }) {
   const { settings } = useData()
 
+  const uploaded = <img src={settings.logo} alt={settings.siteName} className={size === 'sm' ? 'h-8' : 'h-11'} />
   const inner = settings.logo ? (
-    <img src={settings.logo} alt={settings.siteName} className={size === 'sm' ? 'h-8' : 'h-11'} />
+    inverted ? (
+      <span className="inline-flex bg-white rounded-md px-3 py-2">{uploaded}</span>
+    ) : (
+      uploaded
+    )
   ) : (
     <span className="flex items-center gap-2.5">
       <Emblem size={size === 'sm' ? 24 : 30} />

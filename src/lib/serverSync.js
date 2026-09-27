@@ -26,6 +26,7 @@ export const emptyState = (settings = {}) => ({
   version: 1,
   settings: { ...DEFAULT_SETTINGS, ...settings },
   courseImports: [],
+  auditLog: [],
   ...Object.fromEntries(COLLECTIONS.map((c) => [c, []])),
 })
 
