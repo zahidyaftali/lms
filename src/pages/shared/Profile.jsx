@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { readAsDataURL } from '../../lib/fileStore'
 import { duration, formatDate, fullName } from '../../lib/utils'
+import { passwordProblem } from '../../components/users/AccountDialogs'
 
 export default function Profile() {
   const { branches, groups, certificates, actions, settings } = useData()
@@ -40,13 +41,13 @@ export default function Profile() {
     toast('Profile updated.')
   }
 
-  function changePassword() {
+  async function changePassword() {
     setError('')
-    if (passwords.current !== user.password) return setError('Your current password is not correct.')
-    if (passwords.next.length < (settings.users.passwordMinLength || 8))
-      return setError(`Use at least ${settings.users.passwordMinLength || 8} characters.`)
+    const problem = passwordProblem(passwords.next, settings.users.passwordMinLength || 8)
+    if (problem) return setError(problem)
     if (passwords.next !== passwords.confirm) return setError('The new passwords do not match.')
-    actions.updateUser(user.id, { password: passwords.next })
+    const result = await actions.changePassword(user.id, passwords.current, passwords.next)
+    if (!result.ok) return setError(result.error)
     setPasswords({ current: '', next: '', confirm: '' })
     toast('Password changed.')
   }

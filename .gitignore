@@ -20,3 +20,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# local API data (npm run dev without DATABASE_URL)
+.data/

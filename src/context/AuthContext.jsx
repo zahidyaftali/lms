@@ -6,24 +6,35 @@ import { isAdmin } from '../lib/permissions'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const { users, actions } = useData()
+  const { users, actions, backend, me } = useData()
+  const serverMode = backend.mode === 'server'
   const [session, setSession] = useState(() => loadSession())
 
   useEffect(() => {
     saveSession(session)
   }, [session])
 
-  const user = useMemo(() => users.find((u) => u.id === session?.userId) || null, [users, session])
+  // With the shared database the server's session cookie says who is signed in;
+  // the local session then only remembers which role an admin is previewing.
+  const user = useMemo(() => {
+    const id = serverMode ? me : session?.userId
+    return users.find((u) => u.id === id) || null
+  }, [users, session, me, serverMode])
 
   /** The role the portal is currently rendered as — admins can preview other roles. */
   const view = useMemo(() => {
     if (!user) return null
-    if (!session?.view) return isAdmin(user) ? 'admin' : user.role
-    return session.view
+    if (session?.userId === user.id && session.view) return session.view
+    return isAdmin(user) ? 'admin' : user.role
   }, [user, session])
 
   const login = useCallback(
-    (email, password) => {
+    async (email, password) => {
+      if (serverMode) {
+        const result = await actions.signIn(email, password)
+        if (result.ok) setSession({ userId: result.user.id, view: isAdmin(result.user) ? 'admin' : result.user.role })
+        return result
+      }
       const found = users.find((u) => u.email.toLowerCase() === String(email).trim().toLowerCase())
       if (!found) return { ok: false, error: 'No account found for that email address.' }
       // A space picked up when pasting from an email should not lock anyone out.
@@ -37,12 +48,18 @@ export function AuthProvider({ children }) {
       setSession({ userId: found.id, view: isAdmin(found) ? 'admin' : found.role })
       return { ok: true, user: found }
     },
-    [users, actions],
+    [users, actions, serverMode],
   )
 
-  const logout = useCallback(() => setSession(null), [])
+  const logout = useCallback(() => {
+    setSession(null)
+    if (serverMode) actions.signOut()
+  }, [actions, serverMode])
 
-  const setView = useCallback((next) => setSession((prev) => (prev ? { ...prev, view: next } : prev)), [])
+  const setView = useCallback(
+    (next) => setSession((prev) => (user ? { ...(prev || {}), userId: user.id, view: next } : prev)),
+    [user],
+  )
 
   const value = useMemo(
     () => ({ user, view, login, logout, setView, isAuthenticated: !!user }),

@@ -3,26 +3,236 @@ import { loadState, saveState, clearState } from '../lib/storage'
 import { buildSeed } from '../lib/seed'
 import { COURSE_DEFAULTS } from '../lib/courseDefaults'
 import { applyCourseImport } from '../lib/importedCourses'
+import { api, detectBackend } from '../lib/api'
+import { COLLECTIONS, advanceSnapshot, diffState, emptyState, snapshotOf } from '../lib/serverSync'
 import { uid } from '../lib/utils'
+
+const UPLOADED_KEY = 'ga_lms_state_uploaded_v1'
 
 const DataContext = createContext(null)
 
+/**
+ * The portal's data. With a database connected (see server/), everything lives
+ * on the server and every change is sent there, so accounts work on any device.
+ * Without one, the portal keeps its data in this browser as it always has.
+ *
+ * backend.mode: 'pending' until /api/health answers, then 'local' or 'server'.
+ * In server mode backend.status is 'loading' | 'anonymous' | 'ready' | 'error'.
+ */
 export function DataProvider({ children }) {
-  // Saved portals from an earlier version may predate newer collections, so
-  // seed defaults fill in any keys the stored state is missing. The TalentLMS
-  // course import is layered on once, for new and existing portals alike.
-  const [state, setState] = useState(() => {
-    const stored = loadState()
-    return applyCourseImport(stored ? { ...buildSeed(), ...stored } : buildSeed())
-  })
+  const [backend, setBackend] = useState({ mode: 'pending' })
+  const [me, setMe] = useState(null)
+  const [syncProblem, setSyncProblem] = useState(null)
+  const [state, setState] = useState(() => emptyState())
   const stateRef = useRef(state)
   stateRef.current = state
+  const backendRef = useRef(backend)
+  backendRef.current = backend
+  const sync = useRef({ snapshot: null, timer: null, running: false, again: false })
+
+  const adopt = useCallback((next) => {
+    stateRef.current = next
+    setState(next)
+  }, [])
+
+  /**
+   * Fetches what the signed-in user may see (or, signed out, the public branding).
+   * A background refresh never overwrites edits that are still on their way to the server.
+   */
+  const reload = useCallback(
+    async ({ background = false } = {}) => {
+      try {
+        const { me: id, data } = await api.get('data')
+        const s = sync.current
+        if (background && (s.running || (s.snapshot && diffState(stateRef.current, s.snapshot)))) return
+        const next = { ...emptyState(), ...data }
+        s.snapshot = snapshotOf(next)
+        adopt(next)
+        setMe(id)
+        setBackend((b) => ({ ...b, status: 'ready', error: null }))
+      } catch (err) {
+        if (err.status !== 401) {
+          if (!background) setBackend((b) => ({ ...b, status: b.status === 'ready' ? 'ready' : 'error', error: err.message }))
+          return
+        }
+        const pub = await api.get('public').catch(() => ({}))
+        sync.current.snapshot = null
+        adopt(emptyState(pub.settings))
+        setMe(null)
+        setBackend((b) => ({ ...b, status: 'anonymous', error: null }))
+      }
+    },
+    [adopt],
+  )
 
   useEffect(() => {
-    saveState(state)
-  }, [state])
+    let cancelled = false
+    detectBackend().then((found) => {
+      if (cancelled) return
+      if (found.database) {
+        setBackend({ mode: 'server', database: found.database, status: 'loading' })
+        reload()
+        return
+      }
+      // Saved portals from an earlier version may predate newer collections, so
+      // seed defaults fill in any keys the stored state is missing. The TalentLMS
+      // course import is layered on once, for new and existing portals alike.
+      const stored = loadState()
+      adopt(applyCourseImport(stored ? { ...buildSeed(), ...stored } : buildSeed()))
+      setBackend({ mode: 'local', api: found.api })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [adopt, reload])
+
+  /** Sends whatever changed since the server last accepted the portal's state. */
+  const pushChanges = useCallback(async () => {
+    const s = sync.current
+    if (s.running) {
+      s.again = true
+      return
+    }
+    if (!s.snapshot || backendRef.current.status !== 'ready') return
+    const payload = diffState(stateRef.current, s.snapshot)
+    if (!payload) return
+    s.running = true
+    try {
+      const result = await api.post('sync', payload)
+      s.snapshot = advanceSnapshot(s.snapshot, payload)
+      setSyncProblem(null)
+      if (payload.passwords) {
+        // Hashed on the server now; the plain text leaves memory.
+        const sent = new Map(payload.passwords.map((x) => [x.userId, x.password]))
+        setState((prev) => ({
+          ...prev,
+          users: prev.users.map((u) => {
+            if (!sent.has(u.id) || u.password !== sent.get(u.id)) return u
+            const { password, ...rest } = u
+            return rest
+          }),
+        }))
+      }
+      if (result.rejected?.length) {
+        console.warn('The server did not accept some changes:', result.rejected)
+        await reload()
+      }
+    } catch (err) {
+      if (err.status === 401) await reload()
+      else {
+        setSyncProblem(err.message)
+        clearTimeout(s.timer)
+        s.timer = setTimeout(() => pushChanges(), 5000)
+      }
+    } finally {
+      s.running = false
+      if (s.again) {
+        s.again = false
+        pushChanges()
+      }
+    }
+  }, [reload])
+
+  useEffect(() => {
+    if (backend.mode === 'local') saveState(state)
+    else if (backend.mode === 'server' && backend.status === 'ready') {
+      clearTimeout(sync.current.timer)
+      sync.current.timer = setTimeout(pushChanges, 250)
+    }
+  }, [state, backend.mode, backend.status, pushChanges])
+
+  // Other people's changes (a learner's enrollment request, a graded test) show up
+  // when the tab regains focus and every minute while it is open.
+  useEffect(() => {
+    if (backend.mode !== 'server' || backend.status !== 'ready') return undefined
+    const refresh = () => document.visibilityState === 'visible' && reload({ background: true })
+    const timer = setInterval(refresh, 60000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [backend.mode, backend.status, reload])
 
   const patch = useCallback((updater) => setState((prev) => ({ ...prev, ...updater(prev) })), [])
+
+  /* ------------------------------------------------------------- accounts */
+  const signIn = useCallback(
+    async (email, password) => {
+      try {
+        const { user } = await api.post('login', { email, password })
+        await reload()
+        return { ok: true, user }
+      } catch (err) {
+        return { ok: false, error: err.message }
+      }
+    },
+    [reload],
+  )
+
+  const signOut = useCallback(async () => {
+    await api.post('logout').catch(() => {})
+    await reload()
+  }, [reload])
+
+  const changePassword = useCallback(
+    async (userId, current, next) => {
+      if (backendRef.current.mode === 'server') {
+        try {
+          await api.post('password', { current, next })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: err.message }
+        }
+      }
+      const user = stateRef.current.users.find((u) => u.id === userId)
+      if (!user || user.password !== current) return { ok: false, error: 'Your current password is not correct.' }
+      patch((prev) => ({ users: prev.users.map((u) => (u.id === userId ? { ...u, password: next } : u)) }))
+      return { ok: true }
+    },
+    [patch],
+  )
+
+  /**
+   * What an earlier, browser-only portal saved in this browser — users added
+   * here, course edits, settings — waiting to be moved to the shared database.
+   */
+  const [uploadedAt, setUploadedAt] = useState(() => {
+    try {
+      return localStorage.getItem(UPLOADED_KEY)
+    } catch {
+      return null
+    }
+  })
+  const localCopy = useMemo(() => {
+    if (backend.mode !== 'server' || uploadedAt) return null
+    const local = loadState()
+    return local?.users?.length ? { users: local.users.length, courses: (local.courses || []).length } : null
+  }, [backend.mode, uploadedAt])
+
+  const uploadLocalData = useCallback(() => {
+    const stored = loadState()
+    if (!stored) return
+    const local = applyCourseImport({ ...buildSeed(), ...stored })
+    setState((prev) => {
+      const next = { ...prev }
+      for (const c of COLLECTIONS) {
+        const mine = local[c] || []
+        const ids = new Set(mine.map((r) => r.id))
+        next[c] = [...(prev[c] || []).filter((r) => !ids.has(r.id)), ...mine]
+      }
+      next.settings = { ...prev.settings, ...(local.settings || {}) }
+      next.courseImports = [...new Set([...(prev.courseImports || []), ...(local.courseImports || [])])]
+      return next
+    })
+    const at = new Date().toISOString()
+    try {
+      localStorage.setItem(UPLOADED_KEY, at)
+    } catch {
+      // The card simply shows again next time.
+    }
+    setUploadedAt(at)
+  }, [])
 
   const logEvent = useCallback(
     (type, text, actorId, targetId = null) =>
@@ -396,14 +606,23 @@ export function DataProvider({ children }) {
   const importState = useCallback((next) => setState(next), [])
 
   const resetPortal = useCallback(() => {
-    clearState()
+    if (backendRef.current.mode === 'local') clearState()
     setState(applyCourseImport(buildSeed()))
   }, [])
 
   const value = useMemo(
     () => ({
       ...state,
+      backend,
+      me,
+      syncProblem,
+      localCopy,
       actions: {
+        signIn,
+        signOut,
+        reload,
+        changePassword,
+        uploadLocalData,
         logEvent,
         addUser,
         updateUser,
@@ -432,6 +651,15 @@ export function DataProvider({ children }) {
     }),
     [
       state,
+      backend,
+      me,
+      syncProblem,
+      localCopy,
+      signIn,
+      signOut,
+      reload,
+      changePassword,
+      uploadLocalData,
       logEvent,
       addUser,
       updateUser,
@@ -459,7 +687,29 @@ export function DataProvider({ children }) {
     ],
   )
 
+  if (backend.mode === 'pending' || (backend.mode === 'server' && backend.status === 'loading')) return <Splash />
+  if (backend.mode === 'server' && backend.status === 'error')
+    return <Splash error={backend.error} onRetry={() => reload()} />
+
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
+}
+
+function Splash({ error, onRetry }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      {error ? (
+        <div className="text-center max-w-sm">
+          <p className="text-[15px] font-semibold text-ink-900">The portal could not load</p>
+          <p className="hint mt-1.5">{error}</p>
+          <button onClick={onRetry} className="btn-primary mt-5">
+            Try again
+          </button>
+        </div>
+      ) : (
+        <p className="text-[14px] text-ink-500 animate-pulse">Loading portal…</p>
+      )}
+    </div>
+  )
 }
 
 export function useData() {

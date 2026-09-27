@@ -130,22 +130,49 @@ message box and their own profile and password settings.
 ## Hosting
 
 The live site is on Vercel (`lms-xi-five-47.vercel.app`), deployed from `main`. `vercel.json` sends every
-path that is not a real file to `index.html`, so reloading `/users` or `/courses/...` opens the app instead
-of Vercel's 404 page.
+path that is not a real file or an `/api` route to `index.html`, so reloading `/users` or `/courses/...`
+opens the app instead of Vercel's 404 page.
+
+## Shared database
+
+Accounts and data are shared across devices once a Postgres database is connected; until then the portal
+keeps everything in the browser where it was entered, and administrators see a notice saying so.
+
+**Connecting it (one time, in the Vercel dashboard):**
+
+1. Open the `lms` project → **Storage** → **Create Database** → **Neon** (Serverless Postgres) → free plan.
+2. Connect it to the project for all environments. Vercel adds `DATABASE_URL` for you.
+3. **Deployments** → latest deployment → **⋯** → **Redeploy**.
+4. Open the site. The first visit fills the database with the portal's sample data and the copied
+   TalentLMS courses (`server/seed-data.js`).
+5. Sign in as an administrator. If this browser still holds data from the browser-only days, a notice
+   offers to move it (Account & Settings → Import-Export); that also carries over the passwords set here.
+6. **Change the SuperAdmin passwords** (Profile → Password). The sample passwords are listed in this
+   public README.
+
+**How it works:**
+
+- `api/*.js` are Vercel Functions that call `server/handler.js`. Records live in one Postgres table
+  (`collection`, `id`, `data`); password hashes (scrypt) live in their own table and never reach a browser.
+- Signing in sets an HttpOnly session cookie. Setting a new password or deactivating an account signs that
+  user out everywhere.
+- Every change is sent to `/api/sync`, where `server/access.js` checks it against the user's role:
+  learners can only change their own profile, progress, submissions and requests; instructors their own
+  courses and grading; administrators everything. Learners receive only their own records.
+- Open pages pick up other people's changes when the tab regains focus and once a minute.
+- `npm run dev` runs the same API locally against `.data/lms-db.json` (or against Neon if
+  `DATABASE_URL` is set). After changing `src/lib/seed.js`, run `npm run seed:export`.
 
 ## Data & storage
 
-The portal runs entirely in the browser — no backend is required to demo it. That also means **accounts
-exist only in the browser where they were created**: a learner signing in from their own device will not
-find their account until the data moves to a shared server.
-
-- Structured data (users, courses, enrollments, settings) → `localStorage`
-- Uploaded media (video, audio, PDFs, SCORM zips, attachments) → IndexedDB (`src/lib/fileStore.js`)
+- Without a database: structured data (users, courses, enrollments, settings) → `localStorage`.
+- With a database: the same data in Postgres, as above.
+- Course files copied from TalentLMS → `public/course-files`, served with the site.
+- Media uploaded from the course builder (video, audio, PDFs, SCORM zips, attachments) → IndexedDB in the
+  uploading browser (`src/lib/fileStore.js`). **These uploads are not shared yet**: learners on other
+  devices will not see them until file storage (for example Vercel Blob) is added.
 - Backup and restore from **Account & Settings → Import-Export**, which also resets the portal to the
   sample content.
-
-To connect a real backend, replace the action implementations in `src/context/DataContext.jsx` with API
-calls; the pages only ever talk to that context.
 
 ## Project layout
 
@@ -156,8 +183,11 @@ src/
     course/      course hero, unit editors, unit viewer, unit type registry
     layout/      topbar, sidebar, app shell, logo
     ui/          buttons, fields, tables, modals, drawers, icons
-  context/       data store, auth/session, toasts
-  lib/           storage, file store, permissions, seed data, helpers
+  context/       data store (local or server-synced), auth/session, toasts
+  lib/           storage, file store, permissions, seed data, API client, sync, helpers
+api/             Vercel Functions, one per API route
+server/          API handler, access rules, password hashing, Postgres/file store, seed data
+scripts/         export-seed.mjs
   pages/
     admin/       dashboard, users, courses, builder, store, groups, branches,
                  notifications, reports, settings

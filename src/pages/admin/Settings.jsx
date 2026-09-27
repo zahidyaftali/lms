@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Badge,
   Button,
@@ -17,7 +18,7 @@ import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { readAsDataURL } from '../../lib/fileStore'
-import { download, uid } from '../../lib/utils'
+import { download, plural, uid } from '../../lib/utils'
 
 const TABS = [
   { value: 'portal', label: 'Portal' },
@@ -34,7 +35,8 @@ export default function Settings() {
   const { settings, actions } = data
   const { user } = useAuth()
   const toast = useToast()
-  const [tab, setTab] = useState('portal')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState(() => params.get('tab') || 'portal')
   const [draft, setDraft] = useState(settings)
   const [dirty, setDirty] = useState(false)
 
@@ -479,19 +481,36 @@ function ImportExportTab() {
   const toast = useToast()
   const [confirmReset, setConfirmReset] = useState(false)
 
+  const shared = data.backend.mode === 'server'
+  const [confirmUpload, setConfirmUpload] = useState(false)
+
   const exportState = () => {
-    const { actions, ...state } = data
+    const { actions, backend, me, syncProblem, localCopy, ...state } = data
     download('ga-lms-backup.json', JSON.stringify(state, null, 2), 'application/json')
     toast('Portal data exported.')
   }
 
   return (
     <>
+      {shared && data.localCopy && (
+        <div className="card card-pad mb-6 border-amber-200">
+          <h2 className="card-title mb-2">Data saved in this browser</h2>
+          <p className="hint mb-5">
+            Before the shared database was connected, this browser kept its own copy of the portal:{' '}
+            {plural(data.localCopy.users, 'user')} and {plural(data.localCopy.courses, 'course')}. Moving it adds those users (with the
+            passwords set here) and changes to the shared database, so they can sign in from any device.
+          </p>
+          <Button icon="upload" onClick={() => setConfirmUpload(true)}>
+            Move this browser's data to the shared database
+          </Button>
+        </div>
+      )}
+
       <div className="card card-pad mb-6">
         <h2 className="card-title mb-2">Export portal data</h2>
         <p className="hint mb-5">
-          Downloads users, courses, enrollments and settings as a JSON file. Uploaded media stays in the browser
-          media library.
+          Downloads users, courses, enrollments and settings as a JSON file. Passwords are never included. Media
+          uploaded from this browser stays in its media library.
         </p>
         <Button icon="download" onClick={exportState}>
           Export JSON
@@ -500,7 +519,10 @@ function ImportExportTab() {
 
       <div className="card card-pad mb-6">
         <h2 className="card-title mb-2">Import portal data</h2>
-        <p className="hint mb-5">Replaces the current portal contents with a previously exported file.</p>
+        <p className="hint mb-5">
+          Replaces the current portal contents with a previously exported file
+          {shared ? ' — for everyone using the portal.' : '.'}
+        </p>
         <label className="btn-ghost cursor-pointer">
           <Icon name="upload" className="w-[18px] h-[18px]" />
           Choose backup file
@@ -529,12 +551,25 @@ function ImportExportTab() {
         <h2 className="card-title mb-2 text-red-700">Reset portal</h2>
         <p className="hint mb-5">
           Restores the demo content that ships with the portal. Every user, course and enrollment you have added is
-          removed.
+          removed{shared ? ' for everyone using the portal, and the sample accounts get their original passwords back' : ''}.
         </p>
         <Button variant="danger" icon="refresh" onClick={() => setConfirmReset(true)}>
           Reset to sample data
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={confirmUpload}
+        onClose={() => setConfirmUpload(false)}
+        onConfirm={() => {
+          data.actions.uploadLocalData()
+          toast('Moving this browser’s data to the shared database…')
+        }}
+        title="Move this browser's data"
+        message="Users, courses and other records saved in this browser are added to the shared database. Where the same record exists in both, this browser's version replaces the shared one."
+        confirmLabel="Move data"
+        tone="primary"
+      />
 
       <ConfirmDialog
         open={confirmReset}

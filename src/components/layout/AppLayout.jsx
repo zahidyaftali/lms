@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import StorageNotice from './StorageNotice'
 import { Modal, Icon } from '../ui'
 import { useData } from '../../context/DataContext'
 
@@ -39,6 +40,7 @@ export default function AppLayout() {
         <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onHelp={() => setHelpOpen(true)} />
 
         <main className="flex-1 min-w-0 overflow-y-auto scroll-thin bg-white">
+          <StorageNotice />
           <div key={location.pathname} className="px-4 sm:px-6 lg:px-8 py-5 lg:py-7 animate-fade-in">
             <Outlet />
           </div>

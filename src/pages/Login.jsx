@@ -13,12 +13,16 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
+    if (busy) return
     setError('')
-    const result = login(email, password)
+    setBusy(true)
+    const result = await login(email, password)
+    setBusy(false)
     if (!result.ok) setError(result.error)
     else navigate('/', { replace: true })
   }
@@ -115,8 +119,8 @@ export default function Login() {
               </div>
             )}
 
-            <Button type="submit" className="w-full">
-              Sign in
+            <Button type="submit" className="w-full" disabled={busy}>
+              {busy ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>
 

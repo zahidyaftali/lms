@@ -9,7 +9,7 @@ import { canSelfEnroll, isCourseFull, timeframeEnded } from '../../lib/courseAcc
 import { formatDate, money } from '../../lib/utils'
 
 export default function Catalog() {
-  const { courses, categories, users, enrollmentRequests, settings, actions } = useData()
+  const { courses, categories, users, enrollmentRequests, enrollmentCounts, settings, actions } = useData()
   const { enrollment, enrollmentsIn } = useSelectors()
   const { user } = useAuth()
   const toast = useToast()
@@ -32,7 +32,8 @@ export default function Catalog() {
     if (q && !c.name.toLowerCase().includes(q)) return false
     if (category && c.categoryId !== category) return false
     const involved = !!enrollment(user.id, c.id) || requestFor(c.id)?.status === 'pending'
-    if (!involved && (isCourseFull(c, enrollmentsIn(c.id).length) || timeframeEnded(c))) return false
+    const enrolledCount = enrollmentCounts?.[c.id] ?? enrollmentsIn(c.id).length
+    if (!involved && (isCourseFull(c, enrolledCount) || timeframeEnded(c))) return false
     return true
   })
 

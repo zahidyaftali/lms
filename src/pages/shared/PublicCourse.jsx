@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Badge, Icon } from '../../components/ui'
 import Logo from '../../components/layout/Logo'
@@ -11,6 +11,7 @@ import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { isPubliclyShared } from '../../lib/courseAccess'
+import { api } from '../../lib/api'
 
 /** Guest progress is keyed by course and never leaves this browser. */
 const GUEST_KEY = 'ga_lms_guest_progress_v1'
@@ -39,11 +40,27 @@ function writeGuestProgress(courseId, unitIds) {
  */
 export default function PublicCourse() {
   const { courseId } = useParams()
-  const { courses } = useData()
+  const { courses, backend } = useData()
   const { isAuthenticated } = useAuth()
   const toast = useToast()
 
-  const course = courses.find((c) => c.id === courseId)
+  // Signed-out visitors of the shared portal have no courses loaded, so the
+  // shared course comes straight from the server.
+  const local = courses.find((c) => c.id === courseId)
+  const needsFetch = backend.mode === 'server' && !local
+  const [remote, setRemote] = useState(needsFetch ? undefined : null)
+  useEffect(() => {
+    if (!needsFetch) return undefined
+    let active = true
+    api
+      .get(`public-course?id=${encodeURIComponent(courseId)}`)
+      .then((r) => active && setRemote(r.course))
+      .catch(() => active && setRemote(null))
+    return () => {
+      active = false
+    }
+  }, [needsFetch, courseId])
+  const course = local || remote || undefined
   const contentUnits = useMemo(() => (course?.units || []).filter((u) => u.type !== 'section'), [course])
   const [completed, setCompleted] = useState(() => readGuestProgress(courseId))
   const [activeId, setActiveId] = useState(
@@ -58,6 +75,15 @@ export default function PublicCourse() {
       </Link>
     </header>
   )
+
+  if (!local && remote === undefined) {
+    return (
+      <div className="min-h-screen bg-[#f7f8fa]">
+        {header}
+        <p className="text-center text-[14px] text-ink-500 py-16 animate-pulse">Loading course…</p>
+      </div>
+    )
+  }
 
   if (!isPubliclyShared(course)) {
     return (

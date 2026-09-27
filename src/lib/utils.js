@@ -111,6 +111,8 @@ export async function copyText(text) {
   return ok
 }
 
+export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 export function daysAgo(n) {
   return new Date(Date.now() - n * 86400000).toISOString()
 }
