@@ -1,31 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, Checkbox, Icon, Radio, Textarea } from '../ui'
-import { getFileURL } from '../../lib/fileStore'
+import { toEmbedURL, useFileURL } from './media'
+import { isHtml } from './unitTypes'
 import { cx, formatDateTime, uid } from '../../lib/utils'
-
-/** Resolves an IndexedDB file id into an object URL for the lifetime of the unit. */
-function useFileURL(fileId) {
-  const [url, setUrl] = useState(null)
-  useEffect(() => {
-    let revoked = null
-    let active = true
-    if (fileId) {
-      getFileURL(fileId).then((u) => {
-        if (active) {
-          setUrl(u)
-          revoked = u
-        } else if (u) URL.revokeObjectURL(u)
-      })
-    } else {
-      setUrl(null)
-    }
-    return () => {
-      active = false
-      if (revoked) URL.revokeObjectURL(revoked)
-    }
-  }, [fileId])
-  return url
-}
 
 export default function UnitViewer({ unit, onComplete, completed, submission, onSubmitAssignment, onSubmitTest }) {
   if (!unit) return null
@@ -126,7 +103,11 @@ function MediaUnit({ unit, onComplete, completed }) {
       )}
 
       {src && (!embed || unit.data?.source === 'file') && isVideo && (
-        <video src={src} controls className="w-full rounded-md bg-black" onEnded={onComplete} />
+        <video src={src} controls className="w-full rounded-md bg-black" onEnded={onComplete}>
+          {unit.data?.captionsUrl && (
+            <track kind="captions" src={unit.data.captionsUrl} srcLang="en" label="English" />
+          )}
+        </video>
       )}
 
       {src && !isVideo && <audio src={src} controls className="w-full" onEnded={onComplete} />}
@@ -136,15 +117,40 @@ function MediaUnit({ unit, onComplete, completed }) {
   )
 }
 
+/** A document is either uploaded to this browser (`fileId`) or served with the portal (`url`). */
 function DocumentUnit({ unit, onComplete, completed }) {
-  const url = useFileURL(unit.data?.fileId)
+  const fileUrl = useFileURL(unit.data?.url ? null : unit.data?.fileId)
+  const url = unit.data?.url || fileUrl
   const isPdf = (unit.data?.fileType || '').includes('pdf') || (unit.data?.fileName || '').endsWith('.pdf')
 
   return (
     <div>
-      {!unit.data?.fileId && <p className="hint">No document has been uploaded for this unit yet.</p>}
+      {unit.data?.description && (
+        <div
+          className="prose-unit text-[15px] leading-7 text-ink-900 mb-5"
+          dangerouslySetInnerHTML={{ __html: unit.data.description }}
+        />
+      )}
 
-      {url && isPdf && <iframe src={url} title={unit.name} className="w-full h-[70vh] rounded-md border border-line" />}
+      {!unit.data?.url && !unit.data?.fileId && (
+        <p className="hint">No document has been uploaded for this unit yet.</p>
+      )}
+
+      {url && isPdf && (
+        <>
+          <iframe src={url} title={unit.name} className="w-full h-[70vh] rounded-md border border-line" />
+          {/* Phone browsers often won't draw a PDF inside a page, so the file is always one tap away. */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="link text-[13.5px] inline-flex items-center gap-1.5 mt-3"
+          >
+            <Icon name="download" className="w-4 h-4" />
+            Open or download the PDF
+          </a>
+        </>
+      )}
 
       {url && !isPdf && (
         <a href={url} download={unit.data.fileName} className="btn-outline">
@@ -293,6 +299,12 @@ function TestUnit({ unit, onSubmitTest, completed }) {
       <div className="border border-line rounded-md px-6 py-8 text-center">
         <Icon name="clipboard" className="w-8 h-8 mx-auto text-brand-700 mb-3" strokeWidth={1.4} />
         <p className="text-[16px] font-semibold">{unit.name}</p>
+        {unit.data?.description && (
+          <div
+            className="prose-unit text-left text-[14px] leading-6 text-ink-700 mt-4 max-w-2xl mx-auto"
+            dangerouslySetInnerHTML={{ __html: unit.data.description }}
+          />
+        )}
         <ul className="hint mt-3 space-y-1">
           <li>{questions.length} questions</li>
           <li>Pass mark {unit.data?.passingScore || 0}%</li>
@@ -447,12 +459,19 @@ function AssignmentUnit({ unit, submission, onSubmitAssignment, completed }) {
 
   return (
     <div>
-      <div className="prose-unit text-[15px] leading-7 text-ink-900 whitespace-pre-line">
-        {unit.data?.instructions || 'No instructions have been added yet.'}
-      </div>
+      {isHtml(unit.data?.instructions) ? (
+        <div
+          className="prose-unit text-[15px] leading-7 text-ink-900"
+          dangerouslySetInnerHTML={{ __html: unit.data.instructions }}
+        />
+      ) : (
+        <div className="prose-unit text-[15px] leading-7 text-ink-900 whitespace-pre-line">
+          {unit.data?.instructions || 'No instructions have been added yet.'}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-4 mt-5 text-[13px] text-ink-500">
-        <span>Due within {unit.data?.dueDays || 0} days</span>
+        {unit.data?.dueDays > 0 && <span>Due within {unit.data.dueDays} days</span>}
         <span>Maximum score {unit.data?.maxScore || 100}</span>
       </div>
 
@@ -551,13 +570,4 @@ function IltUnit({ unit, onComplete, completed }) {
       <CompleteBar onComplete={onComplete} completed={completed} label="Mark attendance complete" />
     </div>
   )
-}
-
-function toEmbedURL(url) {
-  if (!url) return null
-  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/)
-  if (yt) return `https://www.youtube.com/embed/${yt[1]}`
-  const vimeo = url.match(/vimeo\.com\/(\d+)/)
-  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`
-  return null
 }

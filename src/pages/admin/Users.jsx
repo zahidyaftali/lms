@@ -25,13 +25,21 @@ import {
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
-import { formatDate, fullName, randomPassword, shortName, timeAgo, toCSV, download } from '../../lib/utils'
+import {
+  CredentialsDialog,
+  PasswordField,
+  SetPasswordDialog,
+  passwordProblem,
+  usePasswordMinLength,
+} from '../../components/users/AccountDialogs'
+import { copyText, formatDate, fullName, randomPassword, shortName, timeAgo, toCSV, download } from '../../lib/utils'
 
 const emptyDraft = () => ({
   firstName: '',
   lastName: '',
   email: '',
-  password: randomPassword(),
+  password: '',
+  newPassword: '',
   userType: 'Learner-Type',
   branchId: '',
   groupIds: [],
@@ -44,9 +52,10 @@ const emptyDraft = () => ({
 export default function Users() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const { users, userTypes, branches, groups, courses, actions } = useData()
+  const { users, userTypes, branches, groups, courses, settings, actions } = useData()
   const { user: me } = useAuth()
   const toast = useToast()
+  const minLength = usePasswordMinLength()
 
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState({ type: '', status: '', branch: '', group: '' })
@@ -57,6 +66,8 @@ export default function Users() {
   const [draft, setDraft] = useState(emptyDraft)
   const [errors, setErrors] = useState({})
   const [credentials, setCredentials] = useState(null)
+  const [passwordFor, setPasswordFor] = useState(null)
+  const [imported, setImported] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [importText, setImportText] = useState('')
@@ -88,14 +99,14 @@ export default function Users() {
 
   function openCreate() {
     setEditing(null)
-    setDraft(emptyDraft())
+    setDraft({ ...emptyDraft(), userType: settings.users?.defaultUserType || 'Learner-Type' })
     setErrors({})
     setFormOpen(true)
   }
 
   function openEdit(u) {
     setEditing(u)
-    setDraft({ ...emptyDraft(), ...u, notify: false })
+    setDraft({ ...emptyDraft(), ...u, password: '', newPassword: '', notify: false })
     setErrors({})
     setFormOpen(true)
   }
@@ -107,7 +118,13 @@ export default function Users() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.email)) next.email = 'Enter a valid email address.'
     else if (users.some((u) => u.email.toLowerCase() === draft.email.toLowerCase() && u.id !== editing?.id))
       next.email = 'Another account already uses this email.'
-    if (!editing && (draft.password || '').length < 8) next.password = 'Use at least 8 characters.'
+    if (!editing) {
+      const problem = passwordProblem(draft.password, minLength)
+      if (problem) next.password = problem
+    } else if (draft.newPassword) {
+      const problem = passwordProblem(draft.newPassword, minLength)
+      if (problem) next.newPassword = problem
+    }
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -129,10 +146,12 @@ export default function Users() {
     }
 
     if (editing) {
-      actions.updateUser(editing.id, payload)
+      actions.updateUser(editing.id, draft.newPassword ? { ...payload, password: draft.newPassword } : payload)
       actions.logEvent('user', `updated the profile of ${shortName(editing)}`, me.id, editing.id)
+      if (draft.newPassword) setCredentials({ user: { ...editing, ...payload }, password: draft.newPassword })
       toast(`${fullName(payload)} updated.`)
     } else {
+      // Saved exactly as typed: the same string is stored, shown and copied.
       const created = actions.addUser({ ...payload, password: draft.password })
       // Group enrollment mirrors what group membership grants.
       const courseIds = draft.groupIds.flatMap((gid) => groups.find((g) => g.id === gid)?.courseIds || [])
@@ -149,17 +168,21 @@ export default function Users() {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean)
-    let count = 0
+    const created = []
+    const taken = new Set(users.map((u) => u.email.toLowerCase()))
     lines.forEach((line) => {
-      const [firstName, lastName, email, type = 'Learner-Type'] = line.split(',').map((s) => (s || '').trim())
-      if (!email || users.some((u) => u.email.toLowerCase() === email.toLowerCase())) return
+      const [firstName, lastName, email, type = 'Learner-Type', given = ''] = line.split(',').map((x) => (x || '').trim())
+      if (!email || taken.has(email.toLowerCase())) return
       const role = userTypes.find((t) => t.name === type)?.role || 'learner'
-      actions.addUser({ firstName, lastName, email, userType: type, role, password: randomPassword(), active: true })
-      count += 1
+      const password = given && !passwordProblem(given, minLength) ? given : randomPassword()
+      const user = actions.addUser({ firstName, lastName, email, userType: type, role, password, active: true })
+      taken.add(email.toLowerCase())
+      created.push({ user, password })
     })
     setImportOpen(false)
     setImportText('')
-    toast(count ? `${count} user${count === 1 ? '' : 's'} imported.` : 'No new users found in that list.', count ? 'success' : 'info')
+    if (created.length) setImported(created)
+    else toast('No new users found in that list.', 'info')
   }
 
   const columns = [
@@ -333,15 +356,8 @@ export default function Users() {
             <MenuItem icon="book" onClick={() => setEnrollTarget([u.id])}>
               Enroll in course
             </MenuItem>
-            <MenuItem
-              icon="refresh"
-              onClick={() => {
-                const password = randomPassword()
-                actions.updateUser(u.id, { password })
-                setCredentials({ user: u, password })
-              }}
-            >
-              Reset password
+            <MenuItem icon="refresh" onClick={() => setPasswordFor(u)}>
+              Set new password
             </MenuItem>
             <MenuItem
               icon={u.active ? 'lock' : 'check'}
@@ -413,27 +429,33 @@ export default function Users() {
           <Field label="Email address" required error={errors.email} className="sm:col-span-2">
             <Input
               type="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={draft.email}
               onChange={(e) => setDraft({ ...draft, email: e.target.value })}
               placeholder="student@example.com"
             />
           </Field>
 
-          {!editing && (
-            <Field
-              label="Password"
-              required
-              error={errors.password}
-              hint="Share this with the user — they can change it from their profile."
+          {editing ? (
+            <PasswordField
+              label="New password"
+              hint="Leave empty to keep the current password."
+              value={draft.newPassword}
+              onChange={(v) => setDraft({ ...draft, newPassword: v })}
+              error={errors.newPassword}
               className="sm:col-span-2"
-            >
-              <div className="flex gap-3">
-                <Input value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
-                <Button variant="ghost" icon="refresh" onClick={() => setDraft({ ...draft, password: randomPassword() })}>
-                  Generate
-                </Button>
-              </div>
-            </Field>
+            />
+          ) : (
+            <PasswordField
+              required
+              hint={`At least ${minLength} characters. This is exactly what the user types to sign in.`}
+              value={draft.password}
+              onChange={(v) => setDraft({ ...draft, password: v })}
+              error={errors.password}
+              className="sm:col-span-2"
+            />
           )}
 
           <Field label="User type" hint="Controls what this account can access.">
@@ -502,55 +524,26 @@ export default function Users() {
       </Modal>
 
       {/* ----------------------------------------------------- credentials */}
-      <Modal
+      <CredentialsDialog
         open={!!credentials}
+        user={credentials?.user}
+        password={credentials?.password}
         onClose={() => setCredentials(null)}
-        title="Login details"
-        subtitle="Send these to the user — the portal has no self-service sign-up."
-        width="max-w-md"
-        footer={
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                navigator.clipboard?.writeText(
-                  `Portal: ${window.location.origin}\nEmail: ${credentials.user.email}\nPassword: ${credentials.password}`,
-                )
-                toast('Login details copied to clipboard.')
-              }}
-            >
-              Copy
-            </Button>
-            <Button
-              onClick={() => {
-                window.location.href = `mailto:${credentials.user.email}?subject=${encodeURIComponent('Your GA Healthcare Training portal account')}&body=${encodeURIComponent(`Hello ${credentials.user.firstName},\n\nYour account is ready.\n\nPortal: ${window.location.origin}\nEmail: ${credentials.user.email}\nPassword: ${credentials.password}\n\nGA Healthcare Training & Consulting`)}`
-                setCredentials(null)
-              }}
-            >
-              Send by email
-            </Button>
-          </>
-        }
-      >
-        {credentials && (
-          <dl className="space-y-3.5 text-[14px]">
-            <div className="flex justify-between gap-4">
-              <dt className="text-ink-500">User</dt>
-              <dd className="font-medium">{fullName(credentials.user)}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-ink-500">Email</dt>
-              <dd className="font-medium">{credentials.user.email}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-ink-500">Password</dt>
-              <dd>
-                <code className="bg-gray-100 rounded px-2.5 py-1">{credentials.password}</code>
-              </dd>
-            </div>
-          </dl>
-        )}
-      </Modal>
+      />
+
+      <SetPasswordDialog
+        open={!!passwordFor}
+        user={passwordFor}
+        onClose={() => setPasswordFor(null)}
+        onSave={(password) => {
+          actions.updateUser(passwordFor.id, { password })
+          actions.logEvent('user', `set a new password for ${shortName(passwordFor)}`, me.id, passwordFor.id)
+          setCredentials({ user: passwordFor, password })
+          setPasswordFor(null)
+        }}
+      />
+
+      <ImportedAccountsDialog accounts={imported} onClose={() => setImported(null)} />
 
       {/* --------------------------------------------------------- filters */}
       <Drawer open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter users" width="max-w-md"
@@ -607,7 +600,7 @@ export default function Users() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         title="Import users"
-        subtitle="One user per line: First name, Last name, Email, User type"
+        subtitle="One user per line: First name, Last name, Email, User type, Password (optional)"
         footer={
           <>
             <Button variant="ghost" onClick={() => setImportOpen(false)}>
@@ -617,11 +610,14 @@ export default function Users() {
           </>
         }
       >
-        <Field label="Paste your list" hint="Each imported account gets a generated password you can reset afterwards.">
+        <Field
+          label="Paste your list"
+          hint={`Leave the password out (or shorter than ${minLength} characters) and one is generated. Every account's login details are listed after the import.`}
+        >
           <Textarea
             rows={8}
             value={importText}
-            placeholder={'Maria, Lopez, maria.lopez@example.com, Learner-Type\nJames, Carter, james.carter@example.com, Learner-Type'}
+            placeholder={'Maria, Lopez, maria.lopez@example.com, Learner-Type, Welcome2026\nJames, Carter, james.carter@example.com, Learner-Type'}
             onChange={(e) => setImportText(e.target.value)}
           />
         </Field>
@@ -666,6 +662,59 @@ export default function Users() {
         message={confirm?.message}
       />
     </div>
+  )
+}
+
+/** After an import, the one place the new accounts' passwords are listed. */
+function ImportedAccountsDialog({ accounts, onClose }) {
+  const toast = useToast()
+  const loginUrl = `${window.location.origin}/login`
+  const rows = accounts || []
+  const asCsv = () =>
+    toCSV(rows, [
+      { label: 'First name', value: (r) => r.user.firstName },
+      { label: 'Last name', value: (r) => r.user.lastName },
+      { label: 'Email', value: (r) => r.user.email },
+      { label: 'Password', value: (r) => r.password },
+      { label: 'Sign in at', value: () => loginUrl },
+    ])
+
+  return (
+    <Modal
+      open={!!accounts}
+      onClose={onClose}
+      title={`${rows.length} account${rows.length === 1 ? '' : 's'} created`}
+      subtitle="Save or send these now — this list is only shown once."
+      footer={
+        <>
+          <Button
+            variant="ghost"
+            icon="copy"
+            onClick={async () => {
+              const ok = await copyText(asCsv())
+              toast(ok ? 'Login details copied.' : 'Your browser blocked copying — use Download instead.', ok ? 'success' : 'info')
+            }}
+          >
+            Copy
+          </Button>
+          <Button icon="download" onClick={() => download('ga-new-accounts.csv', asCsv())}>
+            Download CSV
+          </Button>
+        </>
+      }
+    >
+      <div className="divide-y divide-line">
+        {rows.map((r) => (
+          <div key={r.user.id} className="py-3 flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-[14px] text-ink-900">{fullName(r.user)}</p>
+              <p className="text-[13px] text-ink-500 truncate">{r.user.email}</p>
+            </div>
+            <code className="text-[13px] bg-gray-100 rounded px-2.5 py-1 font-mono select-all">{r.password}</code>
+          </div>
+        ))}
+      </div>
+    </Modal>
   )
 }
 

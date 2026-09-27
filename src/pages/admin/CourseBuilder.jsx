@@ -9,16 +9,14 @@ import {
   Drawer,
   Field,
   Icon,
-  Input,
   Modal,
-  OptionList,
   Progress,
   Select,
   Tabs,
-  Textarea,
-  Toggle,
 } from '../../components/ui'
 import CourseHero from '../../components/course/CourseHero'
+import CourseOptions from '../../components/course/CourseOptions'
+import IntroVideo, { hasIntroVideo } from '../../components/course/IntroVideo'
 import UnitEditor from '../../components/course/UnitEditor'
 import { DEFAULT_UNIT_DATA, unitIcon, unitLabel } from '../../components/course/unitTypes'
 import { useData, useSelectors } from '../../context/DataContext'
@@ -60,7 +58,7 @@ export default function CourseBuilder() {
   const { courseId } = useParams()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { courses, users, enrollments, categories, actions } = useData()
+  const { courses, users, enrollments, categories, settings, actions } = useData()
   const { progressOf } = useSelectors()
   const { user, view } = useAuth()
   const toast = useToast()
@@ -256,7 +254,7 @@ export default function CourseBuilder() {
                 navigate(`/courses/${copy.id}`)
               }}
             />
-            <IconButton icon="settings" title="Course settings" onClick={() => setPanel('settings')} />
+            <IconButton icon="settings" title="Course options" onClick={() => setPanel('settings')} />
           </div>
         </div>
 
@@ -339,6 +337,8 @@ export default function CourseBuilder() {
             onChange={(e) => actions.updateCourse(course.id, { description: e.target.value })}
             className="w-full resize-none text-[15px] leading-7 text-ink-700 placeholder:text-ink-400 outline-none bg-transparent mb-8"
           />
+
+          {hasIntroVideo(course.introVideo) && <IntroVideo video={course.introVideo} className="mb-8" />}
 
           <div className="card">
             <div className="px-6 pt-5 flex items-end justify-between gap-4">
@@ -453,16 +453,21 @@ export default function CourseBuilder() {
         toast={toast}
       />
 
-      <CourseSettingsPanel
+      <CourseOptions
         open={panel === 'settings'}
         course={course}
         categories={categories}
         instructors={users.filter((u) => u.role === 'instructor' || u.role === 'admin' || u.role === 'superadmin')}
+        enrolledCount={courseEnrollments.length}
+        takenCodes={courses
+          .filter((c) => c.id !== course.id && c.code)
+          .map((c) => c.code.trim().toLowerCase())}
+        settings={settings}
         onClose={() => setPanel(null)}
         onSave={(changes) => {
           actions.updateCourse(course.id, changes)
           setPanel(null)
-          toast('Course settings saved.')
+          toast('Course options saved.')
         }}
       />
 
@@ -636,119 +641,6 @@ function CourseUsersPanel({ open, course, onClose, users, enrollments, progressO
             ))}
         </div>
       </Modal>
-    </Drawer>
-  )
-}
-
-function CourseSettingsPanel({ open, course, categories, instructors, onClose, onSave }) {
-  const [draft, setDraft] = useState(course)
-
-  useEffect(() => {
-    if (open) setDraft(course)
-  }, [open, course])
-
-  const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="Course settings"
-      subtitle={course.name}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => onSave(draft)}>Save</Button>
-        </>
-      }
-    >
-      <div className="grid grid-cols-2 gap-x-5">
-        <Field label="Course name" className="col-span-2">
-          <Input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
-        </Field>
-        <Field label="Course code">
-          <Input value={draft.code} onChange={(e) => set({ code: e.target.value })} />
-        </Field>
-        <Field label="Price (USD)">
-          <Input type="number" value={draft.price} onChange={(e) => set({ price: Number(e.target.value) })} />
-        </Field>
-        <Field label="Category">
-          <Select value={draft.categoryId || ''} onChange={(e) => set({ categoryId: e.target.value || null })}>
-            <option value="">No category</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Level">
-          <Select value={draft.level} onChange={(e) => set({ level: e.target.value })}>
-            {['All levels', 'Beginner', 'Intermediate', 'Advanced'].map((l) => (
-              <option key={l}>{l}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Banner theme">
-          <Select value={draft.cover} onChange={(e) => set({ cover: e.target.value })}>
-            <option value="default">GA Healthcare (gold)</option>
-            <option value="cna">Nursing Assistant</option>
-            <option value="nclex">NCLEX Review</option>
-            <option value="compliance">Compliance</option>
-          </Select>
-        </Field>
-        <Field label="Capacity" hint="0 = unlimited">
-          <Input type="number" value={draft.capacity} onChange={(e) => set({ capacity: Number(e.target.value) })} />
-        </Field>
-        <Field label="Completion rule" className="col-span-2">
-          <Select value={draft.completionRule} onChange={(e) => set({ completionRule: e.target.value })}>
-            <option>All units must be completed</option>
-            <option>Only the final test must be passed</option>
-            <option>Instructor marks the course complete</option>
-          </Select>
-        </Field>
-        <Field label="Time limit (days)" hint="0 = no limit">
-          <Input type="number" value={draft.timeLimitDays} onChange={(e) => set({ timeLimitDays: Number(e.target.value) })} />
-        </Field>
-        <Field label="Description" className="col-span-2">
-          <Textarea rows={4} value={draft.description} onChange={(e) => set({ description: e.target.value })} />
-        </Field>
-
-        <Field label="Instructors" className="col-span-2">
-          <OptionList>
-            {instructors.map((i) => (
-              <Checkbox
-                key={i.id}
-                label={`${fullName(i)} · ${i.userType}`}
-                checked={(draft.instructorIds || []).includes(i.id)}
-                onChange={(v) =>
-                  set({
-                    instructorIds: v
-                      ? [...(draft.instructorIds || []), i.id]
-                      : (draft.instructorIds || []).filter((id) => id !== i.id),
-                  })
-                }
-              />
-            ))}
-          </OptionList>
-        </Field>
-
-        <div className="col-span-2 space-y-4">
-          <Toggle
-            checked={draft.certificate}
-            onChange={(v) => set({ certificate: v })}
-            label="Issue a certificate on completion"
-          />
-          <Toggle
-            checked={draft.status === 'active'}
-            onChange={(v) => set({ status: v ? 'active' : 'inactive', published: v })}
-            label="Course is active"
-            hint="Inactive courses stay hidden from learners."
-          />
-        </div>
-      </div>
     </Drawer>
   )
 }

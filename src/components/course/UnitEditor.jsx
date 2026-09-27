@@ -13,7 +13,7 @@ import {
   Toggle,
 } from '../ui'
 import RichText from './RichText'
-import { DEFAULT_UNIT_DATA, unitLabel } from './unitTypes'
+import { DEFAULT_UNIT_DATA, isHtml, unitLabel } from './unitTypes'
 import { putFile } from '../../lib/fileStore'
 import { fileSize, uid } from '../../lib/utils'
 
@@ -110,7 +110,7 @@ export default function UnitEditor({ open, unit, onClose, onSave }) {
       {unit.type === 'assignment' && (
         <>
           <Field label="Instructions">
-            <Textarea rows={5} value={data.instructions} onChange={(e) => set({ instructions: e.target.value })} />
+            <RichText value={asHtml(data.instructions)} onChange={(instructions) => set({ instructions })} />
           </Field>
           <div className="grid grid-cols-2 gap-x-5">
             <Field label="Due within (days)">
@@ -211,7 +211,7 @@ function UploadField({ label, hint, accept, data, set }) {
               if (!file) return
               setBusy(true)
               const stored = await putFile(file)
-              set({ fileId: stored.id, fileName: stored.name, fileType: stored.type, fileSize: stored.size })
+              set({ fileId: stored.id, fileName: stored.name, fileType: stored.type, fileSize: stored.size, url: '' })
               setBusy(false)
               e.target.value = ''
             }}
@@ -230,6 +230,7 @@ function UploadField({ label, hint, accept, data, set }) {
 
 function TestEditor({ data, set }) {
   const questions = data.questions || []
+  const pending = data.questionsPending && questions.length === 0
 
   const addQuestion = (type) =>
     set({
@@ -263,6 +264,20 @@ function TestEditor({ data, set }) {
 
   return (
     <>
+      {pending && (
+        <p className="mb-5 flex gap-2.5 text-[13px] leading-5 text-ink-700 bg-amber-50 border border-amber-100 rounded-md px-3.5 py-2.5">
+          <Icon name="alert" className="w-[18px] h-[18px] shrink-0 text-amber-600" />
+          <span>
+            This test was copied from TalentLMS without its questions, which TalentLMS would not release. Add the
+            questions below; until then learners cannot take it or finish the course.
+          </span>
+        </p>
+      )}
+
+      <Field label="Instructions" hint="Shown to learners before they start.">
+        <RichText value={asHtml(data.description)} onChange={(description) => set({ description })} minHeight={120} />
+      </Field>
+
       <div className="grid grid-cols-2 gap-x-5">
         <Field label="Passing score (%)">
           <Input type="number" value={data.passingScore} onChange={(e) => set({ passingScore: Number(e.target.value) })} />
@@ -577,4 +592,13 @@ function toLocalInput(value) {
   if (Number.isNaN(d.getTime())) return ''
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** Plain-text instructions written before the rich editor keep their line breaks. */
+function asHtml(value) {
+  if (!value || isHtml(value)) return value || ''
+  return value
+    .split(/\n{2,}/)
+    .map((p) => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p>`)
+    .join('')
 }

@@ -7,6 +7,7 @@ import Home from './pages/Home'
 import Messages from './pages/shared/Messages'
 import Profile from './pages/shared/Profile'
 import NotFound from './pages/shared/NotFound'
+import PublicCourse from './pages/shared/PublicCourse'
 
 import Users from './pages/admin/Users'
 import UserDetail from './pages/admin/UserDetail'
@@ -44,6 +45,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+
+      {/* Courses with public sharing on; no account needed. */}
+      <Route path="/share/:courseId" element={<PublicCourse />} />
 
       <Route
         path="/courses/:courseId"

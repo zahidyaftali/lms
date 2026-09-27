@@ -4,18 +4,16 @@ import { Button, Field, Icon, Input, Modal } from '../components/ui'
 import Logo from '../components/layout/Logo'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
-import { cx } from '../lib/utils'
 
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const { settings, users } = useData()
+  const { settings } = useData()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
-  const [accountsOpen, setAccountsOpen] = useState(false)
 
   const submit = (e) => {
     e.preventDefault()
@@ -80,6 +78,9 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </Field>
 
@@ -91,6 +92,9 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
                   autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   className="pr-11"
                 />
                 <button
@@ -125,13 +129,6 @@ export default function Login() {
               New students do not sign up here. Your account is created by the program office and your login
               details are emailed to you.
             </p>
-            <button
-              onClick={() => setAccountsOpen(true)}
-              className="link text-[13px] mt-2 inline-flex items-center gap-1.5"
-            >
-              <Icon name="info" className="w-4 h-4" />
-              View portal accounts for testing
-            </button>
           </div>
         </div>
       </div>
@@ -146,42 +143,6 @@ export default function Login() {
         </p>
       </Modal>
 
-      <Modal
-        open={accountsOpen}
-        onClose={() => setAccountsOpen(false)}
-        title="Portal accounts"
-        subtitle="Seeded accounts you can use while evaluating the portal."
-      >
-        <div className="divide-y divide-line">
-          {users
-            .filter((u) => u.active)
-            .map((u) => (
-              <div key={u.id} className="py-3 flex items-center gap-4">
-                <span
-                  className={cx(
-                    'w-2 h-2 rounded-full shrink-0',
-                    u.role === 'learner' ? 'bg-emerald-500' : u.role === 'instructor' ? 'bg-amber-500' : 'bg-brand-700',
-                  )}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13.5px] font-medium text-ink-900">{u.userType}</p>
-                  <p className="text-[13px] text-ink-500 truncate">{u.email}</p>
-                </div>
-                <code className="text-[12.5px] bg-gray-100 rounded px-2.5 py-1">{u.password}</code>
-                <button
-                  className="link text-[12.5px]"
-                  onClick={() => {
-                    setEmail(u.email)
-                    setPassword(u.password)
-                    setAccountsOpen(false)
-                  }}
-                >
-                  Use
-                </button>
-              </div>
-            ))}
-        </div>
-      </Modal>
     </div>
   )
 }

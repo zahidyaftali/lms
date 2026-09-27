@@ -4,6 +4,7 @@ import { Badge, Button, EmptyState, Icon, PageHeader, Progress, SearchInput, Tab
 import CourseHero from '../../components/course/CourseHero'
 import { useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
+import { accessWindow } from '../../lib/courseAccess'
 import { formatDate } from '../../lib/utils'
 
 export default function MyCourses() {
@@ -57,6 +58,7 @@ export default function MyCourses() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 lg:gap-6 stagger">
           {filtered.map(({ course, enrollment }) => {
             const value = progressOf(enrollment)
+            const access = accessWindow(course, enrollment)
             return (
               <article key={course.id} className="card card-interactive overflow-hidden flex flex-col">
                 <CourseHero course={course} size="sm" tags={[course.level]} />
@@ -75,12 +77,35 @@ export default function MyCourses() {
                       <span className="text-[12.5px] text-ink-700 w-9">{value}%</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="hint flex items-center gap-1.5">
-                        <Icon name="calendar" className="w-4 h-4" />
-                        Enrolled {formatDate(enrollment.enrolledAt)}
-                      </span>
-                      <Button size="sm" onClick={() => navigate(`/my-courses/${course.id}`)}>
-                        {value === 0 ? 'Start' : value === 100 ? 'Review' : 'Continue'}
+                      {access.state === 'open' ? (
+                        <span className="hint flex items-center gap-1.5">
+                          <Icon name={access.ends ? 'clock' : 'calendar'} className="w-4 h-4" />
+                          {access.ends
+                            ? `Access until ${formatDate(access.ends)}`
+                            : `Enrolled ${formatDate(enrollment.enrolledAt)}`}
+                        </span>
+                      ) : (
+                        <span className="hint flex items-center gap-1.5">
+                          <Icon name="lock" className="w-4 h-4" />
+                          {access.state === 'upcoming'
+                            ? `Opens ${formatDate(access.starts)}`
+                            : `Access ended ${formatDate(access.ends)}`}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        disabled={access.state !== 'open'}
+                        onClick={() => navigate(`/my-courses/${course.id}`)}
+                      >
+                        {access.state === 'upcoming'
+                          ? 'Not open yet'
+                          : access.state === 'expired'
+                            ? 'Expired'
+                            : value === 0
+                              ? 'Start'
+                              : value === 100
+                                ? 'Review'
+                                : 'Continue'}
                       </Button>
                     </div>
                   </div>

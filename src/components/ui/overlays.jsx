@@ -174,8 +174,11 @@ export function MenuDivider() {
   return <div className="my-1.5 border-t border-line" />
 }
 
-/** Slide-over panel used for unit editors and detail views. */
-export function Drawer({ open, onClose, title, subtitle, children, footer, width = 'max-w-3xl' }) {
+/**
+ * Slide-over panel used for unit editors and detail views. `toolbar` sits
+ * between the header and the scrolling body, so tabs stay in view.
+ */
+export function Drawer({ open, onClose, title, subtitle, children, footer, toolbar, width = 'max-w-3xl' }) {
   useEffect(() => {
     if (!open) return undefined
     document.body.style.overflow = 'hidden'
@@ -199,6 +202,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer, width
             <Icon name="x" />
           </button>
         </div>
+        {toolbar && <div className="px-5 sm:px-6 pt-4 shrink-0">{toolbar}</div>}
         <div className="flex-1 overflow-y-auto scroll-thin px-5 sm:px-6 py-5">{children}</div>
         {footer && (
           <div className="px-5 sm:px-6 py-4 border-t border-line flex flex-col-reverse sm:flex-row sm:justify-end gap-3">

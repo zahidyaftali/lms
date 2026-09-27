@@ -87,7 +87,7 @@ export default function Grading() {
                   <div className="flex-1 min-w-0">
                     <p className="text-[15px] font-medium">{fullName(learner)}</p>
                     <p className="hint">
-                      {unit?.name} · {course?.name}
+                      {unit?.name || 'Removed unit'} · {course?.name}
                     </p>
                     <p className="text-[12.5px] text-ink-500 mt-0.5">Submitted {formatDateTime(s.submittedAt)}</p>
 

@@ -1,16 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { loadState, saveState, clearState } from '../lib/storage'
 import { buildSeed } from '../lib/seed'
+import { COURSE_DEFAULTS } from '../lib/courseDefaults'
+import { applyCourseImport } from '../lib/importedCourses'
 import { uid } from '../lib/utils'
 
 const DataContext = createContext(null)
 
 export function DataProvider({ children }) {
   // Saved portals from an earlier version may predate newer collections, so
-  // seed defaults fill in any keys the stored state is missing.
+  // seed defaults fill in any keys the stored state is missing. The TalentLMS
+  // course import is layered on once, for new and existing portals alike.
   const [state, setState] = useState(() => {
     const stored = loadState()
-    return stored ? { ...buildSeed(), ...stored } : buildSeed()
+    return applyCourseImport(stored ? { ...buildSeed(), ...stored } : buildSeed())
   })
   const stateRef = useRef(state)
   stateRef.current = state
@@ -79,22 +82,10 @@ export function DataProvider({ children }) {
     (course) => {
       const now = new Date().toISOString()
       const record = {
+        ...COURSE_DEFAULTS,
         id: uid('c'),
-        name: 'New course',
-        code: '',
-        categoryId: null,
-        price: 0,
-        description: '',
-        status: 'inactive',
-        published: false,
-        level: 'All levels',
-        capacity: 0,
-        instructorIds: [],
-        certificate: true,
-        completionRule: 'All units must be completed',
-        timeLimitDays: 0,
-        cover: 'default',
         units: [],
+        instructorIds: [],
         createdAt: now,
         updatedAt: now,
         ...course,
@@ -348,6 +339,7 @@ export function DataProvider({ children }) {
               userId,
               courseId,
               issuedAt: new Date().toISOString(),
+              type: course.certificateType || 'classic',
               code: `GA-${(course.code || 'CRS').toUpperCase()}-${Math.floor(1000 + Math.random() * 8999)}`,
             },
           ]
@@ -405,7 +397,7 @@ export function DataProvider({ children }) {
 
   const resetPortal = useCallback(() => {
     clearState()
-    setState(buildSeed())
+    setState(applyCourseImport(buildSeed()))
   }, [])
 
   const value = useMemo(

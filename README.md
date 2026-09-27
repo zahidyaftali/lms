@@ -14,8 +14,8 @@ npm run build    # production bundle in dist/
 
 ## Signing in
 
-The portal ships with sample data. Any of these accounts works (the login screen also lists them under
-"View portal accounts for testing"):
+The portal ships with sample data. Any of these accounts works. Change these passwords before real
+students use the portal: this repository is public.
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -26,6 +26,19 @@ The portal ships with sample data. Any of these accounts works (the login screen
 | Learner | marcus.bennett@example.com | `Welcome1` |
 
 Administrators can preview the portal as an instructor or learner from the avatar menu ("Switch role").
+
+### Accounts and passwords
+
+Only administrators create accounts (Users → Add user, or Import user(s)); there is no sign-up page.
+
+- The password box starts empty and saves exactly what is typed. Generate fills in a random one. The
+  Login details window and its Copy button show that same password.
+- Edit user → New password, or Set new password on the user's page, replaces a password. The old one stops
+  working immediately.
+- Imports take an optional fifth column, Password. Accounts without one get a generated password, and every
+  new account's details are listed once after the import, with a CSV download.
+- Passwords must be at least the minimum length in Account & Settings → Users (8 by default) and cannot
+  start or end with a space.
 
 ## Access levels
 
@@ -56,8 +69,36 @@ limit, attempts, shuffle), surveys, assignments with file upload, instructor-led
 date/location/capacity, SCORM · xAPI · cmi5 packages.
 **More** — sections, clone units from another course, link units from another course.
 
-Course-level tools: enrolled users panel, duplicate course, settings (code, price, category, level,
-instructors, completion rule, time limit, certificate, banner theme).
+Course-level tools: enrolled users panel, duplicate course, and **Course options** (the gear button), a
+tabbed panel whose settings all take effect for learners:
+
+| Tab | Options |
+| --- | --- |
+| Info | Activation, unique code, category, intro video (YouTube/Vimeo link or uploaded file, shown under the description in the builder, as a play button on the catalog card and on the public page), price, instructors, difficulty, banner theme |
+| Availability | Catalog visibility; capacity (a full course leaves the catalog, manual enrollment still works); public sharing (`/share/:courseId`, no account needed, guest progress kept in that browser); enrollment request (switching it off lets learners enroll themselves, but only if self-enrollment is also on in Account & Settings → Courses) |
+| Limits | Time limit in days from enrollment, or a start/end timeframe; access retention keeps completed learners in after either runs out. Expired or not-yet-open courses are locked in My courses and the player. |
+| Completion | Completion rule and certificate template: Classic, Fancy, Modern or Simple. Issued certificates keep the template they were issued with. |
+
+The rules live in `src/lib/courseAccess.js`.
+
+## Courses copied from TalentLMS
+
+The real GA Healthcare courses were copied from gahctc.talentlms.com on 27/09/2026: **Nursing Assistant**,
+**NCLEX PN REVIEW COURSE**, **NCLEX RN REVIEW** and **Instructor onbording** (names as they were in
+TalentLMS). Only courses came across. No users, enrollments or other data were copied, and TalentLMS's two
+built-in sample courses were skipped.
+
+- `src/lib/importedCourses.json` holds the courses: sections, lessons, the assignment, test settings and
+  instructions. `src/lib/importedCourses.js` merges them into the portal once (marker: `courseImports`), so
+  existing portals keep their users and later edits are never overwritten. The first three replace the
+  portal's sample courses of the same name, keeping their ids.
+- `public/course-files/<course>/` holds the 40 documents and 24 videos (about 335 MB), served with the app.
+  Documents are TalentLMS's PDF renderings, because downloads of the original Word and PowerPoint files are
+  switched off there.
+- **Test questions were not copied.** TalentLMS refused to release them for the signed-in account. The 30
+  tests keep their names, pass marks, attempts and instructions, and the test editor flags each one until
+  questions are added. A test with no questions cannot be taken, so those courses cannot be completed until
+  then.
 
 ## Enrollment requests
 
@@ -86,9 +127,17 @@ Assigned courses with a unit-by-unit player, progress tracking, quizzes graded o
 uploads, feedback from instructors, an automatically issued certificate on completion, an internal
 message box and their own profile and password settings.
 
+## Hosting
+
+The live site is on Vercel (`lms-xi-five-47.vercel.app`), deployed from `main`. `vercel.json` sends every
+path that is not a real file to `index.html`, so reloading `/users` or `/courses/...` opens the app instead
+of Vercel's 404 page.
+
 ## Data & storage
 
-The portal runs entirely in the browser — no backend is required to demo it.
+The portal runs entirely in the browser — no backend is required to demo it. That also means **accounts
+exist only in the browser where they were created**: a learner signing in from their own device will not
+find their account until the data moves to a shared server.
 
 - Structured data (users, courses, enrollments, settings) → `localStorage`
 - Uploaded media (video, audio, PDFs, SCORM zips, attachments) → IndexedDB (`src/lib/fileStore.js`)

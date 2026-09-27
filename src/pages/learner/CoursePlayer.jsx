@@ -1,20 +1,22 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Badge, Button, Icon, Progress } from '../../components/ui'
+import { Badge, Button, Icon } from '../../components/ui'
 import CourseHero from '../../components/course/CourseHero'
 import UnitViewer from '../../components/course/UnitViewer'
-import { unitIcon, unitLabel } from '../../components/course/unitTypes'
+import CourseOutline, { UnitPager } from '../../components/course/CourseOutline'
+import { unitLabel } from '../../components/course/unitTypes'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { putFile } from '../../lib/fileStore'
-import { cx } from '../../lib/utils'
+import { accessWindow } from '../../lib/courseAccess'
+import { formatDate } from '../../lib/utils'
 
 export default function CoursePlayer() {
   const { courseId } = useParams()
   const navigate = useNavigate()
   const { courses, submissions, actions } = useData()
-  const { enrollment, progressOf } = useSelectors()
+  const { enrollment } = useSelectors()
   const { user } = useAuth()
   const toast = useToast()
 
@@ -37,8 +39,27 @@ export default function CoursePlayer() {
     )
   }
 
+  const access = accessWindow(course, record)
+  if (access.state !== 'open') {
+    return (
+      <div className="card card-pad max-w-xl">
+        <span className="w-11 h-11 rounded-full bg-gray-100 text-ink-700 flex items-center justify-center mb-4">
+          <Icon name="lock" className="w-5 h-5" />
+        </span>
+        <h2 className="card-title">{course.name}</h2>
+        <p className="text-[14px] text-ink-700 mt-2">
+          {access.state === 'upcoming'
+            ? `This course opens on ${formatDate(access.starts)}. Come back then to start.`
+            : `Your access to this course ended on ${formatDate(access.ends)}. Contact the program office if you need more time.`}
+        </p>
+        <Button className="mt-5" variant="ghost" icon="arrowLeft" onClick={() => navigate('/my-courses')}>
+          Back to my courses
+        </Button>
+      </div>
+    )
+  }
+
   const active = course.units.find((u) => u.id === activeId) || contentUnits[0]
-  const progress = progressOf(record)
   const activeIndex = contentUnits.findIndex((u) => u.id === active?.id)
   const submission = submissions.find(
     (s) => s.userId === user.id && s.unitId === active?.id && s.courseId === course.id,
@@ -73,64 +94,12 @@ export default function CoursePlayer() {
       <CourseHero course={course} className="rounded-card mb-6" />
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
-        <aside className="card">
-          <div className="p-5 border-b border-line">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[13px] text-ink-500">Your progress</span>
-              <span className="text-[13px] font-semibold">{progress}%</span>
-            </div>
-            <Progress value={progress} tone={progress === 100 ? 'green' : 'brand'} />
-            <p className="hint mt-2.5">
-              {record.completedUnits.length} of {contentUnits.length} units completed
-            </p>
-          </div>
-
-          <ul className="py-2 max-h-[560px] overflow-y-auto scroll-thin">
-            {course.units.map((unit) => {
-              if (unit.type === 'section') {
-                return (
-                  <li key={unit.id} className="px-5 pt-4 pb-2">
-                    <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">
-                      {unit.name}
-                    </span>
-                  </li>
-                )
-              }
-              const done = record.completedUnits.includes(unit.id)
-              return (
-                <li key={unit.id}>
-                  <button
-                    onClick={() => setActiveId(unit.id)}
-                    className={cx(
-                      'w-full flex items-center gap-3 px-5 py-3 text-left transition',
-                      unit.id === active?.id ? 'bg-brand-50' : 'hover:bg-gray-50',
-                    )}
-                  >
-                    <span
-                      className={cx(
-                        'w-7 h-7 rounded-full flex items-center justify-center shrink-0',
-                        done ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-ink-700',
-                      )}
-                    >
-                      <Icon name={done ? 'check' : unitIcon(unit.type)} className="w-3.5 h-3.5" strokeWidth={2.2} />
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span
-                        className={cx(
-                          'block text-[13.5px] truncate',
-                          unit.id === active?.id ? 'text-brand-700 font-medium' : 'text-ink-900',
-                        )}
-                      >
-                        {unit.name}
-                      </span>
-                      <span className="block text-[11.5px] text-ink-500">{unitLabel(unit.type)}</span>
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </aside>
+        <CourseOutline
+          course={course}
+          completedUnits={record.completedUnits}
+          activeId={active?.id}
+          onSelect={setActiveId}
+        />
 
         <section className="card card-pad min-h-[420px]">
           {active ? (
@@ -188,24 +157,7 @@ export default function CoursePlayer() {
                 }}
               />
 
-              <div className="flex justify-between gap-3 mt-8 pt-6 border-t border-line">
-                <Button
-                  variant="ghost"
-                  icon="arrowLeft"
-                  disabled={activeIndex <= 0}
-                  onClick={() => setActiveId(contentUnits[activeIndex - 1].id)}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={activeIndex >= contentUnits.length - 1}
-                  onClick={() => setActiveId(contentUnits[activeIndex + 1].id)}
-                >
-                  Next unit
-                  <Icon name="arrowRight" className="w-[18px] h-[18px]" />
-                </Button>
-              </div>
+              <UnitPager units={contentUnits} index={activeIndex} onSelect={setActiveId} />
             </>
           ) : (
             <p className="hint">Your instructor has not added any content to this course yet.</p>

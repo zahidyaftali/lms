@@ -15,7 +15,8 @@ import {
 import { EnrollModal } from './Users'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
-import { duration, formatDate, fullName, randomPassword, timeAgo } from '../../lib/utils'
+import { CredentialsDialog, SetPasswordDialog } from '../../components/users/AccountDialogs'
+import { duration, formatDate, fullName, timeAgo } from '../../lib/utils'
 
 export default function UserDetail() {
   const { userId } = useParams()
@@ -26,6 +27,8 @@ export default function UserDetail() {
   const [tab, setTab] = useState('courses')
   const [enrollOpen, setEnrollOpen] = useState(false)
   const [confirm, setConfirm] = useState(null)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [credentials, setCredentials] = useState(null)
 
   const user = userById(userId)
   if (!user) {
@@ -55,16 +58,8 @@ export default function UserDetail() {
         <Button variant="ghost" icon="book" onClick={() => setEnrollOpen(true)}>
           Enroll in course
         </Button>
-        <Button
-          variant="ghost"
-          icon="refresh"
-          onClick={() => {
-            const password = randomPassword()
-            actions.updateUser(user.id, { password })
-            toast(`New password for ${user.firstName}: ${password}`, 'info')
-          }}
-        >
-          Reset password
+        <Button variant="ghost" icon="refresh" onClick={() => setPasswordOpen(true)}>
+          Set new password
         </Button>
         <Button
           variant={user.active ? 'ghost' : 'primary'}
@@ -234,6 +229,23 @@ export default function UserDetail() {
           toast('Enrollment updated.')
           setEnrollOpen(false)
         }}
+      />
+
+      <SetPasswordDialog
+        open={passwordOpen}
+        user={user}
+        onClose={() => setPasswordOpen(false)}
+        onSave={(password) => {
+          actions.updateUser(user.id, { password })
+          setPasswordOpen(false)
+          setCredentials({ user, password })
+        }}
+      />
+      <CredentialsDialog
+        open={!!credentials}
+        user={credentials?.user}
+        password={credentials?.password}
+        onClose={() => setCredentials(null)}
       />
 
       <ConfirmDialog

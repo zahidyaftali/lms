@@ -156,6 +156,9 @@
 }
 
 /* Rendered lesson content (rich text units and the editor surface) */
+.prose-unit h1 {
+  @apply text-[22px] font-bold text-ink-900 mt-6 mb-3 first:mt-0;
+}
 .prose-unit h2 {
   @apply text-[20px] font-semibold text-ink-900 mt-6 mb-3 first:mt-0;
 }
@@ -177,13 +180,35 @@
 .prose-unit strong {
   @apply font-semibold;
 }
+.prose-unit hr {
+  @apply my-6 border-line;
+}
+/* Tables pasted from Word keep their shading; the wrapper lets wide ones scroll on phones. */
+.prose-unit .table-scroll {
+  @apply w-full overflow-x-auto mb-4;
+}
+.prose-unit table {
+  @apply w-full border-collapse text-[14px] leading-6;
+}
+.prose-unit td,
+.prose-unit th {
+  @apply border border-line-strong px-3 py-2 align-top text-left;
+}
+.prose-unit td p,
+.prose-unit th p {
+  @apply mb-1 last:mb-0;
+}
 
 @media print {
   body * {
     visibility: hidden;
   }
-  .fixed [class*='border-double'],
-  .fixed [class*='border-double'] * {
+  .certificate-sheet,
+  .certificate-sheet * {
     visibility: visible;
+  }
+  .certificate-sheet {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

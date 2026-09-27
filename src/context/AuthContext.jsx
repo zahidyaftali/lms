@@ -26,7 +26,10 @@ export function AuthProvider({ children }) {
     (email, password) => {
       const found = users.find((u) => u.email.toLowerCase() === String(email).trim().toLowerCase())
       if (!found) return { ok: false, error: 'No account found for that email address.' }
-      if (found.password !== password) return { ok: false, error: 'Incorrect password. Please try again.' }
+      // A space picked up when pasting from an email should not lock anyone out.
+      const given = String(password ?? '')
+      if (found.password !== given && found.password !== given.trim())
+        return { ok: false, error: 'Incorrect password. Please try again.' }
       if (!found.active)
         return { ok: false, error: 'This account is inactive. Contact your administrator.' }
       actions.updateUser(found.id, { lastLogin: new Date().toISOString() })

@@ -30,3 +30,6 @@ export const DEFAULT_UNIT_DATA = {
 
 export const unitLabel = (type) => UNIT_TYPES[type]?.label || 'Unit'
 export const unitIcon = (type) => UNIT_TYPES[type]?.icon || 'file'
+
+/** Imported units carry formatted HTML; units written in the portal may be plain text. */
+export const isHtml = (value) => /<\/?[a-z][^>]*>/i.test(value || '')
