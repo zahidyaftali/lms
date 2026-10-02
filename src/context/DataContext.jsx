@@ -579,12 +579,12 @@ export function DataProvider({ children }) {
     const make = (key, prefix) => ({
       add: (item) => {
         const record = { id: uid(prefix), createdAt: new Date().toISOString(), ...item }
-        patch((prev) => ({ [key]: [...prev[key], record] }))
+        patch((prev) => ({ [key]: [...(prev[key] || []), record] }))
         return record
       },
       update: (id, changes) =>
-        patch((prev) => ({ [key]: prev[key].map((x) => (x.id === id ? { ...x, ...changes } : x)) })),
-      remove: (id) => patch((prev) => ({ [key]: prev[key].filter((x) => x.id !== id) })),
+        patch((prev) => ({ [key]: (prev[key] || []).map((x) => (x.id === id ? { ...x, ...changes } : x)) })),
+      remove: (id) => patch((prev) => ({ [key]: (prev[key] || []).filter((x) => x.id !== id) })),
     })
     return {
       groups: make('groups', 'g'),
@@ -594,6 +594,9 @@ export function DataProvider({ children }) {
       notificationRules: make('notifications', 'nt'),
       messages: make('messages', 'm'),
       submissions: make('submissions', 'sub'),
+      learningPaths: make('learningPaths', 'lp'),
+      automations: make('automations', 'auto'),
+      skills: make('skills', 'sk'),
     }
   }, [patch])
 
@@ -618,7 +621,8 @@ export function DataProvider({ children }) {
     [patch],
   )
 
-  const importState = useCallback((next) => setState(next), [])
+  // A backup from an earlier version has no learning paths, automations or skills.
+  const importState = useCallback((next) => setState({ ...emptyState(), ...next }), [])
 
   const resetPortal = useCallback(() => {
     if (backendRef.current.mode === 'local') clearState()

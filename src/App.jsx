@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import AppLayout from './components/layout/AppLayout'
 import { useAuth } from './context/AuthContext'
+import { useData } from './context/DataContext'
 
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -19,6 +21,10 @@ import Branches from './pages/admin/Branches'
 import Notifications from './pages/admin/Notifications'
 import Reports from './pages/admin/Reports'
 import Settings from './pages/admin/Settings'
+import LearningPaths from './pages/admin/LearningPaths'
+import Automations from './pages/admin/Automations'
+import Skills from './pages/admin/Skills'
+import Subscription from './pages/admin/Subscription'
 
 import InstructorLearners from './pages/instructor/Learners'
 import Grading from './pages/instructor/Grading'
@@ -39,8 +45,27 @@ function RequireView({ allow, children }) {
   return allow.includes(view) ? children : <Navigate to="/" replace />
 }
 
+/** The browser-tab icon follows the favicon uploaded in Account & Settings → Portal. */
+function useFavicon(href) {
+  useEffect(() => {
+    let link = document.querySelector('link[rel="icon"]')
+    if (!href) {
+      link?.remove()
+      return
+    }
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = href
+  }, [href])
+}
+
 export default function App() {
   const { isAuthenticated } = useAuth()
+  const { settings } = useData()
+  useFavicon(settings.favicon)
 
   return (
     <Routes>
@@ -140,6 +165,38 @@ export default function App() {
           element={
             <RequireView allow={['admin']}>
               <Settings />
+            </RequireView>
+          }
+        />
+        <Route
+          path="learning-paths"
+          element={
+            <RequireView allow={['admin']}>
+              <LearningPaths />
+            </RequireView>
+          }
+        />
+        <Route
+          path="automations"
+          element={
+            <RequireView allow={['admin']}>
+              <Automations />
+            </RequireView>
+          }
+        />
+        <Route
+          path="skills"
+          element={
+            <RequireView allow={['admin']}>
+              <Skills />
+            </RequireView>
+          }
+        />
+        <Route
+          path="subscription"
+          element={
+            <RequireView allow={['admin']}>
+              <Subscription />
             </RequireView>
           }
         />

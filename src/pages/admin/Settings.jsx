@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Badge,
@@ -18,7 +18,10 @@ import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { shrinkImage } from '../../lib/fileStore'
+import { withSettingDefaults } from '../../lib/seed'
 import SettingsHistory from './SettingsHistory'
+import { CURRENCIES, EcommerceTab, GamificationTab, IntegrationsTab, SkillsTab } from './SettingsMore'
+import { CustomFields, NumberField, Section, SettingRow } from './SettingsParts'
 import { download, plural, uid } from '../../lib/utils'
 
 const TABS = [
@@ -27,10 +30,17 @@ const TABS = [
   { value: 'types', label: 'User types' },
   { value: 'courses', label: 'Courses' },
   { value: 'categories', label: 'Categories' },
+  { value: 'skills', label: 'Skills' },
+  { value: 'gamification', label: 'Gamification' },
+  { value: 'ecommerce', label: 'E-commerce' },
+  { value: 'integrations', label: 'Integrations' },
   { value: 'security', label: 'Security' },
   { value: 'importexport', label: 'Import-Export' },
   { value: 'history', label: 'History' },
 ]
+
+/** Tabs edited as a draft and kept with the Save button at the bottom. */
+const DRAFT_TABS = ['portal', 'users', 'courses', 'skills', 'gamification', 'ecommerce', 'integrations', 'security']
 
 export default function Settings() {
   const data = useData()
@@ -38,14 +48,19 @@ export default function Settings() {
   const { user } = useAuth()
   const toast = useToast()
   const [params] = useSearchParams()
-  const [tab, setTab] = useState(() => params.get('tab') || 'portal')
-  const [draft, setDraft] = useState(settings)
+  const [tab, setTab] = useState(() => (TABS.some((t) => t.value === params.get('tab')) ? params.get('tab') : 'portal'))
+
+  // Compared by content: the portal re-fetches its data in the background, and a
+  // refresh that changes nothing must not throw away what is being typed here.
+  const savedKey = useMemo(() => JSON.stringify(withSettingDefaults(settings)), [settings])
+  const saved = useMemo(() => JSON.parse(savedKey), [savedKey])
+  const [draft, setDraft] = useState(saved)
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
-    setDraft(settings)
+    setDraft(saved)
     setDirty(false)
-  }, [settings, tab])
+  }, [saved, tab])
 
   const set = (changes) => {
     setDraft((d) => ({ ...d, ...changes }))
@@ -57,13 +72,17 @@ export default function Settings() {
   }
 
   const save = () => {
-    actions.updateSettings(draft)
+    // Only what was edited is written, so History names the settings that really changed.
+    const changes = Object.fromEntries(
+      Object.entries(draft).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(saved[key])),
+    )
+    actions.updateSettings(changes)
     actions.logEvent('settings', 'updated the portal settings', user.id)
     setDirty(false)
     toast('Settings saved.')
   }
 
-  const showFooter = ['portal', 'users', 'courses', 'security'].includes(tab)
+  const showFooter = DRAFT_TABS.includes(tab)
 
   return (
     <div className="-mx-4 sm:-mx-6 lg:-mx-8 -my-5 lg:-my-7 min-h-[calc(100vh-64px)] lg:min-h-[calc(100vh-72px)] flex flex-col">
@@ -73,11 +92,15 @@ export default function Settings() {
         <div className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-7 pb-24">
           <h1 className="page-title mb-7">{TABS.find((t) => t.value === tab)?.label}</h1>
 
-          {tab === 'portal' && <PortalTab draft={draft} set={set} />}
+          {tab === 'portal' && <PortalTab draft={draft} set={set} setGroup={setGroup} />}
           {tab === 'users' && <UsersTab draft={draft} setGroup={setGroup} />}
           {tab === 'types' && <UserTypesTab />}
           {tab === 'courses' && <CoursesTab draft={draft} setGroup={setGroup} />}
           {tab === 'categories' && <CategoriesTab />}
+          {tab === 'skills' && <SkillsTab draft={draft} setGroup={setGroup} />}
+          {tab === 'gamification' && <GamificationTab draft={draft} setGroup={setGroup} />}
+          {tab === 'ecommerce' && <EcommerceTab draft={draft} set={set} setGroup={setGroup} />}
+          {tab === 'integrations' && <IntegrationsTab draft={draft} set={set} setGroup={setGroup} />}
           {tab === 'security' && <SecurityTab draft={draft} setGroup={setGroup} />}
           {tab === 'importexport' && <ImportExportTab />}
           {tab === 'history' && <SettingsHistory />}
@@ -92,7 +115,7 @@ export default function Settings() {
           <Button
             variant="ghost"
             onClick={() => {
-              setDraft(settings)
+              setDraft(saved)
               setDirty(false)
             }}
           >
@@ -104,31 +127,34 @@ export default function Settings() {
   )
 }
 
-function Section({ title, children }) {
+/** Uploads an image as a small data URL, with a preview and a remove button. */
+function ImageSetting({ value, onChange, fallback, size, alt }) {
   return (
-    <section className="card mb-6">
-      <div className="px-5 sm:px-7 py-6">
-        <h2 className="text-[13px] font-semibold tracking-[0.12em] uppercase text-ink-700 mb-6">{title}</h2>
-        <div className="space-y-7">{children}</div>
-      </div>
-    </section>
-  )
-}
-
-function SettingRow({ label, hint, children }) {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 md:gap-10 items-start">
-      <div>
-        <p className="text-[14.5px] font-medium text-ink-900">{label}</p>
-        {hint && <p className="hint mt-1">{hint}</p>}
-      </div>
-      <div>{children}</div>
+    <div className="flex items-center gap-4">
+      <span className="flex-1">{value ? <img src={value} alt={alt} className={size.className} /> : fallback}</span>
+      <label className="p-2 rounded text-ink-700 hover:bg-gray-100 cursor-pointer" title={`Upload ${alt.toLowerCase()}`}>
+        <Icon name="upload" className="w-[20px] h-[20px]" />
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            if (file && file.type.startsWith('image/')) onChange(await shrinkImage(file, size.limits))
+            e.target.value = ''
+          }}
+        />
+      </label>
+      <button onClick={() => onChange(null)} className="p-2 rounded text-ink-700 hover:bg-gray-100" title={`Remove ${alt.toLowerCase()}`}>
+        <Icon name="trash" className="w-[20px] h-[20px]" />
+      </button>
     </div>
   )
 }
 
-function PortalTab({ draft, set }) {
+function PortalTab({ draft, set, setGroup }) {
   const [domainOpen, setDomainOpen] = useState(false)
+  const a = draft.announcements
   return (
     <>
       <Section title="Identity">
@@ -157,39 +183,54 @@ function PortalTab({ draft, set }) {
 
       <Section title="Branding">
         <SettingRow label="Logo" hint="PNG, JPG, GIF or SVG. Large images are resized to fit. Shown to everyone once you save.">
-          <div className="flex items-center gap-4">
-            <span className="flex-1">
-              {draft.logo ? <img src={draft.logo} alt="Portal logo" className="h-12" /> : <Logo size="sm" />}
-            </span>
-            <label className="p-2 rounded text-ink-700 hover:bg-gray-100 cursor-pointer" title="Upload logo">
-              <Icon name="upload" className="w-[20px] h-[20px]" />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0]
-                  if (file && file.type.startsWith('image/')) set({ logo: await shrinkImage(file) })
-                  e.target.value = ''
-                }}
-              />
-            </label>
-            <button onClick={() => set({ logo: null })} className="p-2 rounded text-ink-700 hover:bg-gray-100" title="Remove logo">
-              <Icon name="trash" className="w-[20px] h-[20px]" />
-            </button>
-          </div>
+          <ImageSetting
+            value={draft.logo}
+            onChange={(logo) => set({ logo })}
+            alt="Logo"
+            size={{ className: 'h-12' }}
+            fallback={<Logo size="sm" />}
+          />
+        </SettingRow>
+        <SettingRow label="Favicon" hint="The small icon on the browser tab. A square image works best.">
+          <ImageSetting
+            value={draft.favicon}
+            onChange={(favicon) => set({ favicon })}
+            alt="Favicon"
+            size={{ className: 'h-8 w-8 rounded', limits: { maxWidth: 64, maxHeight: 64 } }}
+            fallback={<span className="hint">No favicon uploaded</span>}
+          />
+        </SettingRow>
+        <SettingRow label="Theme" hint="The colours used across the portal.">
+          <Select value={draft.theme} onChange={(e) => set({ theme: e.target.value })}>
+            <option>GA Healthcare (default)</option>
+            <option>Navy &amp; gold</option>
+            <option>Light</option>
+            <option>High contrast</option>
+          </Select>
+          <p className="hint mt-2">Only the default theme is available for now; other choices are saved for later.</p>
         </SettingRow>
         <SettingRow label="Website" hint="Shown in the Help Center and on certificates.">
           <Input value={draft.website} onChange={(e) => set({ website: e.target.value })} />
         </SettingRow>
       </Section>
 
-      <Section title="Contact & localization">
+      <Section title="Contact">
         <SettingRow label="Support email">
           <Input value={draft.supportEmail} onChange={(e) => set({ supportEmail: e.target.value })} />
         </SettingRow>
         <SettingRow label="Support phone">
           <Input value={draft.supportPhone} onChange={(e) => set({ supportPhone: e.target.value })} />
+        </SettingRow>
+      </Section>
+
+      <Section title="Locale">
+        <SettingRow label="Default language">
+          <Select value={draft.language} onChange={(e) => set({ language: e.target.value })}>
+            <option>English (US)</option>
+            <option>Spanish</option>
+            <option>French</option>
+          </Select>
+          <p className="hint mt-2">The portal is in English for now; other choices are saved for later.</p>
         </SettingRow>
         <SettingRow label="Time zone">
           <Select value={draft.timezone} onChange={(e) => set({ timezone: e.target.value })}>
@@ -205,6 +246,56 @@ function PortalTab({ draft, set }) {
             <option>MM/DD/YYYY</option>
           </Select>
         </SettingRow>
+        <SettingRow label="Currency" hint="Used for course prices.">
+          <Select value={draft.currency} onChange={(e) => set({ currency: e.target.value })}>
+            {CURRENCIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </Select>
+        </SettingRow>
+      </Section>
+
+      <Section title="Announcements">
+        <SettingRow label="Internal announcement" hint="Shown at the top of every page to everyone who is signed in.">
+          <Toggle checked={a.internalOn} onChange={(v) => setGroup('announcements', { internalOn: v })} />
+          {a.internalOn && (
+            <Textarea
+              rows={3}
+              value={a.internal}
+              onChange={(e) => setGroup('announcements', { internal: e.target.value })}
+              placeholder="Skills lab is closed on Friday for maintenance."
+              className="mt-3"
+            />
+          )}
+        </SettingRow>
+        <SettingRow label="External announcement" hint="Shown on the sign-in page, before anyone has signed in.">
+          <Toggle checked={a.externalOn} onChange={(v) => setGroup('announcements', { externalOn: v })} />
+          {a.externalOn && (
+            <Textarea
+              rows={3}
+              value={a.external}
+              onChange={(e) => setGroup('announcements', { external: e.target.value })}
+              placeholder="Fall 2026 enrollment is open. Call the program office to register."
+              className="mt-3"
+            />
+          )}
+        </SettingRow>
+      </Section>
+
+      <Section title="Custom homepage">
+        <SettingRow label="Custom homepage" hint="A public welcome page in front of the sign-in page. Saved for later: visitors still land on the sign-in page.">
+          <Toggle checked={draft.homepage.custom} onChange={(v) => setGroup('homepage', { custom: v })} />
+        </SettingRow>
+        {draft.homepage.custom && (
+          <>
+            <SettingRow label="Headline">
+              <Input value={draft.homepage.headline} onChange={(e) => setGroup('homepage', { headline: e.target.value })} />
+            </SettingRow>
+            <SettingRow label="Introduction">
+              <Textarea rows={4} value={draft.homepage.intro} onChange={(e) => setGroup('homepage', { intro: e.target.value })} />
+            </SettingRow>
+          </>
+        )}
       </Section>
 
       <Modal open={domainOpen} onClose={() => setDomainOpen(false)} title="Custom domain" width="max-w-md">
@@ -217,8 +308,18 @@ function PortalTab({ draft, set }) {
   )
 }
 
+const SSO_FIELDS = [
+  ['identityProvider', 'Identity provider', 'The address of the service that signs your staff in.'],
+  ['certificate', 'Certificate fingerprint'],
+  ['signInUrl', 'Remote sign-in address'],
+  ['signOutUrl', 'Remote sign-out address'],
+  ['emailAttribute', 'Email attribute', 'The field in the sign-in response that holds the user’s email address.'],
+]
+
 function UsersTab({ draft, setGroup }) {
+  const { groups } = useData()
   const u = draft.users
+  const sso = draft.sso
   return (
     <>
       <Section title="Registration">
@@ -241,6 +342,79 @@ function UsersTab({ draft, setGroup }) {
         <SettingRow label="Send welcome email" hint="Emails the new user their login details.">
           <Toggle checked={u.welcomeEmail} onChange={(v) => setGroup('users', { welcomeEmail: v })} />
         </SettingRow>
+        <SettingRow label="Default group" hint="New accounts join this group and receive its courses. Saved for later: add new users to a group from the Groups page for now.">
+          <Select value={u.defaultGroupId} onChange={(e) => setGroup('users', { defaultGroupId: e.target.value })}>
+            <option value="">No group</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </Select>
+        </SettingRow>
+        <SettingRow label="Visible user format" hint="How names appear in lists and reports. Saved for later.">
+          <Select value={u.nameFormat} onChange={(e) => setGroup('users', { nameFormat: e.target.value })}>
+            <option>First name and last name</option>
+            <option>First initial and last name</option>
+            <option>Email address</option>
+          </Select>
+        </SettingRow>
+      </Section>
+
+      <Section title="Sign-up">
+        <p className="hint -mt-3">
+          These apply when people can create their own account. Self-registration is off, so they are saved for later.
+        </p>
+        <SettingRow label="Restrict sign-up to email domains" hint="Separate domains with commas. Leave empty to allow any address.">
+          <Input value={u.allowedDomains} onChange={(e) => setGroup('users', { allowedDomains: e.target.value })} placeholder="gahealthcaretraining.com" />
+        </SettingRow>
+        <SettingRow label="User verification" hint="How a new account is confirmed before it can be used.">
+          <Select value={u.verification} onChange={(e) => setGroup('users', { verification: e.target.value })}>
+            <option>None</option>
+            <option>CAPTCHA</option>
+            <option>Email verification</option>
+            <option>Administrator activation</option>
+          </Select>
+        </SettingRow>
+        <SettingRow label="Terms of service" hint="Users accept these the first time they sign in.">
+          <Toggle checked={u.termsOn} onChange={(v) => setGroup('users', { termsOn: v })} />
+          {u.termsOn && (
+            <Textarea rows={5} value={u.terms} onChange={(e) => setGroup('users', { terms: e.target.value })} className="mt-3" />
+          )}
+        </SettingRow>
+        <SettingRow label="Sign in with a social account">
+          <div className="space-y-3.5">
+            <Toggle checked={u.socialGoogle} onChange={(v) => setGroup('users', { socialGoogle: v })} label="Google" />
+            <Toggle checked={u.socialFacebook} onChange={(v) => setGroup('users', { socialFacebook: v })} label="Facebook" />
+            <Toggle checked={u.socialLinkedIn} onChange={(v) => setGroup('users', { socialLinkedIn: v })} label="LinkedIn" />
+          </div>
+        </SettingRow>
+      </Section>
+
+      <Section title="Single sign-on">
+        <SettingRow label="Single sign-on" hint="Staff sign in with their organization account instead of a portal password. Saved for later: everyone still signs in with a portal password.">
+          <Select value={sso.type} onChange={(e) => setGroup('sso', { type: e.target.value })}>
+            <option>None</option>
+            <option>SAML 2.0</option>
+            <option>OpenID Connect</option>
+            <option>LDAP</option>
+          </Select>
+        </SettingRow>
+        {sso.type !== 'None' &&
+          SSO_FIELDS.map(([key, label, hint]) => (
+            <SettingRow key={key} label={label} hint={hint}>
+              <Input value={sso[key]} onChange={(e) => setGroup('sso', { [key]: e.target.value })} />
+            </SettingRow>
+          ))}
+      </Section>
+
+      <Section title="Custom user fields">
+        <p className="hint -mt-3">Extra details to keep on every account, such as a student ID. Saved for later: they are not on the user form yet.</p>
+        <CustomFields
+          fields={u.customFields}
+          onChange={(customFields) => setGroup('users', { customFields })}
+          placeholder="Student ID"
+        />
       </Section>
 
       <Section title="Passwords & inactivity">
@@ -389,6 +563,41 @@ function CoursesTab({ draft, setGroup }) {
         </SettingRow>
       </Section>
 
+      <Section title="Learning experience">
+        <p className="hint -mt-3">Saved for later: courses keep working as they do today until these are switched on.</p>
+        <SettingRow label="Unit navigation" hint="Whether learners take units in order or open any unit they like.">
+          <Select value={c.unitNavigation} onChange={(e) => setGroup('courses', { unitNavigation: e.target.value })}>
+            <option>In order</option>
+            <option>Any order</option>
+          </Select>
+        </SettingRow>
+        <SettingRow label="Show a summary page" hint="Learners see the course outline before the first unit.">
+          <Toggle checked={c.showSummary} onChange={(v) => setGroup('courses', { showSummary: v })} />
+        </SettingRow>
+        <SettingRow label="Discussions" hint="Learners and instructors can post questions inside a course.">
+          <Toggle checked={c.discussions} onChange={(v) => setGroup('courses', { discussions: v })} />
+        </SettingRow>
+        <SettingRow label="Course ratings" hint="Learners rate a course once they complete it.">
+          <Toggle checked={c.ratings} onChange={(v) => setGroup('courses', { ratings: v })} />
+        </SettingRow>
+      </Section>
+
+      <Section title="Catalog">
+        <p className="hint -mt-3">Saved for later: the catalog is still shown as cards, to signed-in learners only.</p>
+        <SettingRow label="External catalog" hint="Shows the course catalog to visitors who have not signed in.">
+          <Toggle checked={c.externalCatalog} onChange={(v) => setGroup('courses', { externalCatalog: v })} />
+        </SettingRow>
+        <SettingRow label="Catalog layout">
+          <Select value={c.catalogLayout} onChange={(e) => setGroup('courses', { catalogLayout: e.target.value })}>
+            <option>Cards</option>
+            <option>List</option>
+          </Select>
+        </SettingRow>
+        <SettingRow label="Social sharing" hint="Adds share buttons to catalog courses and certificates.">
+          <Toggle checked={c.socialSharing} onChange={(v) => setGroup('courses', { socialSharing: v })} />
+        </SettingRow>
+      </Section>
+
       <Section title="Certificates">
         <SettingRow label="Issue certificates on completion">
           <Toggle checked={c.certificateEnabled} onChange={(v) => setGroup('courses', { certificateEnabled: v })} />
@@ -401,6 +610,23 @@ function CoursesTab({ draft, setGroup }) {
             <option>36 months</option>
           </Select>
         </SettingRow>
+        <SettingRow label="Default certificate template" hint="Saved for later: new courses still start with Classic. Each course picks its own in Course options.">
+          <Select value={c.certificateTemplate} onChange={(e) => setGroup('courses', { certificateTemplate: e.target.value })}>
+            <option>Classic</option>
+            <option>Fancy</option>
+            <option>Modern</option>
+            <option>Simple</option>
+          </Select>
+        </SettingRow>
+      </Section>
+
+      <Section title="Custom course fields">
+        <p className="hint -mt-3">Extra details to keep on every course, such as clock hours. Saved for later: they are not on the course form yet.</p>
+        <CustomFields
+          fields={c.customFields}
+          onChange={(customFields) => setGroup('courses', { customFields })}
+          placeholder="Clock hours"
+        />
       </Section>
     </>
   )
@@ -459,20 +685,56 @@ function CategoriesTab() {
 function SecurityTab({ draft, setGroup }) {
   const s = draft.security
   return (
-    <Section title="Access & audit">
-      <SettingRow label="Two-factor authentication" hint="Requires a one-time code for administrators.">
-        <Toggle checked={s.twoFactor} onChange={(v) => setGroup('security', { twoFactor: v })} />
-      </SettingRow>
-      <SettingRow label="Session timeout (minutes)">
-        <Input type="number" value={s.sessionTimeout} onChange={(e) => setGroup('security', { sessionTimeout: Number(e.target.value) })} />
-      </SettingRow>
-      <SettingRow label="Failed login attempts before lockout">
-        <Input type="number" value={s.loginAttempts} onChange={(e) => setGroup('security', { loginAttempts: Number(e.target.value) })} />
-      </SettingRow>
-      <SettingRow label="Keep an audit log" hint="Records sign-ins, enrollments and content changes in Reports.">
-        <Toggle checked={s.auditLog} onChange={(v) => setGroup('security', { auditLog: v })} />
-      </SettingRow>
-    </Section>
+    <>
+      <Section title="Access & audit">
+        <SettingRow label="Two-factor authentication" hint="Requires a one-time code when signing in.">
+          <Toggle checked={s.twoFactor} onChange={(v) => setGroup('security', { twoFactor: v })} />
+        </SettingRow>
+        {s.twoFactor && (
+          <SettingRow label="Required for">
+            <Select value={s.twoFactorFor} onChange={(e) => setGroup('security', { twoFactorFor: e.target.value })}>
+              <option>Administrators</option>
+              <option>Administrators and instructors</option>
+              <option>Everyone</option>
+            </Select>
+          </SettingRow>
+        )}
+        <SettingRow label="Session timeout (minutes)">
+          <Input type="number" value={s.sessionTimeout} onChange={(e) => setGroup('security', { sessionTimeout: Number(e.target.value) })} />
+        </SettingRow>
+        <SettingRow label="Failed login attempts before lockout">
+          <Input type="number" value={s.loginAttempts} onChange={(e) => setGroup('security', { loginAttempts: Number(e.target.value) })} />
+        </SettingRow>
+        <SettingRow label="Keep an audit log" hint="Records sign-ins, enrollments and content changes in Reports.">
+          <Toggle checked={s.auditLog} onChange={(v) => setGroup('security', { auditLog: v })} />
+        </SettingRow>
+      </Section>
+
+      <Section title="Password policy">
+        <p className="hint -mt-3">
+          Saved for later: for now the only rule the portal checks is the minimum length in Account &amp; Settings → Users.
+        </p>
+        <SettingRow label="Strong passwords" hint="Passwords need an uppercase letter, a lowercase letter and a number.">
+          <Toggle checked={s.strongPasswords} onChange={(v) => setGroup('security', { strongPasswords: v })} />
+        </SettingRow>
+        <SettingRow label="Passwords expire after" hint="0 means passwords never expire.">
+          <NumberField value={s.passwordExpiryDays} onChange={(v) => setGroup('security', { passwordExpiryDays: v })} unit="days" />
+        </SettingRow>
+        <SettingRow label="New password at first sign-in" hint="Users replace the password an administrator gave them.">
+          <Toggle checked={draft.users.forcePasswordReset} onChange={(v) => setGroup('users', { forcePasswordReset: v })} />
+        </SettingRow>
+      </Section>
+
+      <Section title="Sessions">
+        <p className="hint -mt-3">Saved for later: neither rule is checked at sign-in yet.</p>
+        <SettingRow label="One session at a time" hint="Signing in on a new device signs the user out everywhere else.">
+          <Toggle checked={s.singleSession} onChange={(v) => setGroup('security', { singleSession: v })} />
+        </SettingRow>
+        <SettingRow label="Allowed IP addresses" hint="One address or range per line. Leave empty to allow sign-in from anywhere.">
+          <Textarea rows={3} value={s.allowedIps} onChange={(e) => setGroup('security', { allowedIps: e.target.value })} placeholder="203.0.113.0/24" />
+        </SettingRow>
+      </Section>
+    </>
   )
 }
 

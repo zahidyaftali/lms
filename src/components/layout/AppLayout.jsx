@@ -41,6 +41,12 @@ export default function AppLayout() {
 
         <main className="flex-1 min-w-0 overflow-y-auto scroll-thin bg-white">
           <StorageNotice />
+          {settings.announcements?.internalOn && settings.announcements.internal?.trim() && (
+            <div role="status" className="px-4 sm:px-6 lg:px-8 py-2.5 flex items-start gap-2.5 text-[13px] leading-5 border-b bg-brand-50 border-brand-100 text-ink-900">
+              <Icon name="megaphone" className="w-[18px] h-[18px] shrink-0 text-brand-700" />
+              <span className="flex-1 whitespace-pre-line">{settings.announcements.internal.trim()}</span>
+            </div>
+          )}
           <div key={location.pathname} className="px-4 sm:px-6 lg:px-8 py-5 lg:py-7 animate-fade-in">
             <Outlet />
           </div>

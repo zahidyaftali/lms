@@ -73,6 +73,13 @@ export default function Login() {
             Use the email address and password issued to you by GA Healthcare Training.
           </p>
 
+          {settings.announcements?.externalOn && settings.announcements.external?.trim() && (
+            <div className="flex items-start gap-2.5 rounded-md bg-brand-50 border border-brand-100 px-4 py-3 mb-6">
+              <Icon name="megaphone" className="w-[18px] h-[18px] text-brand-700 mt-0.5 shrink-0" />
+              <p className="text-[13px] text-ink-900 leading-5 whitespace-pre-line">{settings.announcements.external.trim()}</p>
+            </div>
+          )}
+
           <form onSubmit={submit} noValidate>
             <Field label="Email address">
               <Input

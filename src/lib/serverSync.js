@@ -20,6 +20,9 @@ export const COLLECTIONS = [
   'submissions',
   'certificates',
   'enrollmentRequests',
+  'learningPaths',
+  'automations',
+  'skills',
 ]
 
 export const emptyState = (settings = {}) => ({

@@ -23,7 +23,13 @@ export const COLLECTIONS = [
   'submissions',
   'certificates',
   'enrollmentRequests',
+  'learningPaths',
+  'automations',
+  'skills',
 ]
+
+/** Settings groups that hold connection and billing details; only administrators receive them. */
+const ADMIN_SETTINGS = ['integrations', 'api', 'sso', 'ecommerce', 'subscription']
 
 export const isAdmin = (u) => u?.role === 'superadmin' || u?.role === 'admin'
 const isInstructor = (u) => u?.role === 'instructor'
@@ -50,21 +56,30 @@ export function assemble(rows) {
 
 /** Settings the sign-in page needs before anyone has signed in. */
 export function publicSettings(settings = {}) {
-  return pick(settings, ['siteName', 'siteDescription', 'logo', 'supportEmail', 'supportPhone', 'website', 'domain', 'address'])
+  const shown = pick(settings, ['siteName', 'siteDescription', 'logo', 'favicon', 'supportEmail', 'supportPhone', 'website', 'domain', 'address'])
+  // Only the announcement written for the sign-in page; the internal one stays behind the login.
+  const { externalOn, external } = settings.announcements || {}
+  if (externalOn && external) shown.announcements = { externalOn, external }
+  return shown
 }
 
 /** The portal as the signed-in user may see it, in the shape the app keeps in memory. */
 export function viewFor(db, me) {
   const c = db.collections
+  const settings = { ...db.settings }
+  if (!isAdmin(me)) ADMIN_SETTINGS.forEach((key) => delete settings[key])
   const base = {
     version: 1,
-    settings: db.settings,
+    settings,
     courseImports: db.meta.courseImports?.value || [],
     userTypes: c.userTypes,
     categories: c.categories,
     courses: c.courses,
     branches: c.branches,
     groups: c.groups,
+    learningPaths: isAdmin(me) ? c.learningPaths : c.learningPaths.filter((p) => (p.userIds || []).includes(me.id)),
+    skills: isAdmin(me) ? c.skills : c.skills.filter((s) => (s.userIds || []).includes(me.id)),
+    automations: isAdmin(me) ? c.automations : [],
   }
   const users = c.users.map(withoutPassword)
 

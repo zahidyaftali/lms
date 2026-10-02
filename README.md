@@ -1,7 +1,7 @@
 # GA Healthcare Training — Learning Portal
 
 A React + Tailwind LMS built for [GA Healthcare Training & Consulting](https://gahealthcaretraining.com/).
-Single-tenant: there is no subscription, no marketplace billing and no public sign-up — **every account is
+Single-tenant: there is no plan to buy, no marketplace billing and no public sign-up — **every account is
 created by an administrator** and the login details are handed to the student.
 
 ## Running it
@@ -58,14 +58,55 @@ and the latest 2,000 entries are kept. Export downloads the filtered list as CSV
 | Users | Create, edit, deactivate, delete, import/export | Sees own learners only | — |
 | Courses | Full authoring on every course | Authoring on assigned courses | Takes assigned courses |
 | Course store | Add ready-made outlines | — | — |
+| Learning paths / Automations / Skills | Full | — | — |
 | Groups / Branches / Notifications | Full | — | — |
 | Reports | Portal-wide + activity log | Own courses | — |
 | Grading | Yes | Yes | — |
-| Account & Settings | Yes | — | — |
+| Account & Settings / Subscription | Yes | — | — |
 | Profile, messages, certificates | Yes | Yes | Yes |
 
 Routes are guarded on both the navigation and the router, so a learner who types `/users` is returned to
 their own home page.
+
+## Learning paths, automations, skills and subscription
+
+The administrator menu follows the TalentLMS layout: Home, Users, Courses, Learning paths, Course store,
+Groups, Branches, Automations, Notifications, Reports, Skills, Account & Settings, Subscription.
+
+- **Learning paths** — an ordered list of courses with its own learners. Saving an active path enrolls its
+  learners in every course of the path. The Options tab (take courses in order, completion rule, time limit,
+  certificate, self-join) is stored but not enforced yet.
+- **Automations** — rules such as "24 hours after course X is completed, assign courses Y" or "deactivate
+  users who have not signed in for 90 days". Rules are stored; **nothing runs them yet**, and the page says so.
+- **Skills** — skills with a description, the courses that teach them, outside resources and the users who
+  have them. Administrators only for now; learners do not see skills.
+- **Subscription** — the portal's usage (active users, courses, branches, groups), optional limits to be
+  warned about, hosting details and billing details. The portal is not billed, so there are no invoices.
+
+## Account & Settings
+
+| Tab | What it holds |
+| --- | --- |
+| Portal | Identity, logo, **favicon**, theme, contact, locale, **announcements**, custom homepage |
+| Users | Registration defaults, sign-up rules, terms of service, social sign-in, single sign-on, custom user fields, passwords & inactivity |
+| User types, Categories | As before |
+| Courses | Course defaults, learning experience, catalog, certificates, custom course fields |
+| Skills | Skills on/off, learner options, assessment rules |
+| Gamification | Points, badges, levels, rewards, leaderboard |
+| E-commerce | Payment processor, currency, subscription, discounts, coupons, credits, invoices |
+| Integrations | Zoom, Microsoft Teams, GoTo Meeting, BigBlueButton, BambooHR, Salesforce, Zapier, Shopify, WooCommerce, API |
+| Security | Two-factor, session timeout, lockout, audit log, password policy, sessions and allowed IPs |
+| Import-Export, History | As before |
+
+Live today: the favicon (browser tab icon), the internal announcement (a bar above every page for signed-in
+users) and the external announcement (on the sign-in page), alongside everything that already worked.
+Skills, Gamification, E-commerce, Integrations and the options marked "Saved for later" store their values
+and are **not acted on yet**; each says so on the page. Saving writes only the settings that were edited, so
+History names what really changed.
+
+Integrations, API, single sign-on, e-commerce and billing settings are sent to administrators only
+(`ADMIN_SETTINGS` in `server/access.js`). Do not add secret keys to these settings until that feature is
+built with server-side storage for them.
 
 ## Course authoring
 
@@ -199,8 +240,9 @@ api/             Vercel Functions, one per API route
 server/          API handler, access rules, password hashing, Postgres/file store, seed data
 scripts/         export-seed.mjs
   pages/
-    admin/       dashboard, users, courses, builder, store, groups, branches,
-                 notifications, reports, settings
+    admin/       dashboard, users, courses, builder, store, learning paths, groups,
+                 branches, automations, notifications, reports, skills, settings,
+                 subscription
     instructor/  home, learners, grading
     learner/     home, my courses, player, catalog, certificates
     shared/      profile, messages, not found

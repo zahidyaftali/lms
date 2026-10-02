@@ -56,6 +56,8 @@ const SETTINGS_FIELDS = {
   siteName: 'site name',
   siteDescription: 'site description',
   logo: 'logo',
+  favicon: 'favicon',
+  theme: 'theme',
   website: 'website',
   supportEmail: 'support email',
   supportPhone: 'support phone',
@@ -63,9 +65,19 @@ const SETTINGS_FIELDS = {
   timezone: 'time zone',
   language: 'language',
   dateFormat: 'date format',
+  currency: 'currency',
+  announcements: 'announcements',
+  homepage: 'homepage',
   users: 'user settings',
+  sso: 'single sign-on',
   courses: 'course settings',
+  skills: 'skills settings',
+  gamification: 'gamification settings',
+  ecommerce: 'e-commerce settings',
+  integrations: 'integrations',
+  api: 'API access',
   security: 'security settings',
+  subscription: 'billing details',
 }
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
