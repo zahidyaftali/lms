@@ -59,7 +59,11 @@ export const withoutPassword = ({ password, ...rest }) => rest
 /** Rows from the store -> { settings, meta, collections } */
 export function assemble(rows) {
   const db = { settings: null, meta: {}, auditLog: [], collections: Object.fromEntries(COLLECTIONS.map((c) => [c, []])) }
-  for (const { collection, id, data } of rows) {
+  for (const row of rows) {
+    const { collection, id } = row
+    // Every record carries its own id. Sign-in events written by earlier versions did not, and a browser
+    // cannot tell such records apart, so the id the row is stored under is put back.
+    const data = row.data && typeof row.data === 'object' && !Array.isArray(row.data) && row.data.id == null && COLLECTIONS.includes(collection) ? { ...row.data, id } : row.data
     if (collection === 'settings') db.settings = data
     else if (collection === 'meta') db.meta[id] = data
     else if (collection === 'auditLog') db.auditLog.push(data)
@@ -75,7 +79,7 @@ export const stateOf = (db) => ({ ...db.collections, settings: withSettingDefaul
 /** Settings the sign-in page needs before anyone has signed in. */
 export function publicSettings(raw = {}, extra = {}) {
   const settings = withSettingDefaults(raw)
-  const shown = pick(settings, ['siteName', 'siteDescription', 'logo', 'favicon', 'theme', 'language', 'dateFormat', 'timezone', 'currency', 'supportEmail', 'supportPhone', 'website', 'domain', 'address', 'homepage'])
+  const shown = pick(settings, ['settingsVersion', 'siteName', 'siteDescription', 'customDomain', 'logo', 'favicon', 'theme', 'language', 'dateFormat', 'timezone', 'currency', 'supportEmail', 'supportPhone', 'website', 'domain', 'address', 'homepage'])
   // Only the announcement written for the sign-in page; the internal one stays behind the login.
   const { externalOn, external } = settings.announcements || {}
   shown.announcements = { internalOn: false, internal: '', externalOn: !!(externalOn && external), external: externalOn ? external : '' }

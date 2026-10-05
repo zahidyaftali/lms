@@ -19,7 +19,9 @@ import { useToast } from '../../context/ToastContext'
 import { cx, formatDateTime, fullName, timeAgo } from '../../lib/utils'
 
 export default function Messages() {
-  const { messages, users, actions } = useData()
+  const { messages, users, settings, actions } = useData()
+  // Notifications come from the portal itself, not from a person.
+  const nameOf = (m, id) => (m.system && !id ? settings.siteName : fullName(userById(id)))
   const { userById } = useSelectors()
   const { user, view } = useAuth()
   const toast = useToast()
@@ -104,7 +106,7 @@ export default function Messages() {
                       {box === 'inbox' && !m.read && <Badge tone="blue">New</Badge>}
                     </span>
                     <span className="block text-[13px] text-ink-500 truncate mt-0.5">
-                      {box === 'inbox' ? 'From' : 'To'} {fullName(other)} · {m.body}
+                      {box === 'inbox' ? 'From' : 'To'} {nameOf(m, box === 'inbox' ? m.fromId : m.toId)} · {m.body}
                     </span>
                   </span>
                   <span className="text-[12.5px] text-ink-400 whitespace-nowrap">{timeAgo(m.sentAt)}</span>
@@ -119,7 +121,7 @@ export default function Messages() {
         open={!!open}
         onClose={() => setOpen(null)}
         title={open?.subject}
-        subtitle={open ? `${fullName(userById(open.fromId))} · ${formatDateTime(open.sentAt)}` : ''}
+        subtitle={open ? `${nameOf(open, open.fromId)} · ${formatDateTime(open.sentAt)}` : ''}
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(null)}>
@@ -127,6 +129,7 @@ export default function Messages() {
             </Button>
             <Button
               icon="send"
+              disabled={!open?.fromId || open.fromId === user.id}
               onClick={() => {
                 setDraft({ toId: open.fromId, subject: `Re: ${open.subject}`, body: '' })
                 setOpen(null)

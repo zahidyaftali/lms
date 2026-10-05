@@ -78,10 +78,13 @@ export default function AppLayout() {
             </li>
           </ul>
           <div className="rounded-md bg-brand-50 border border-brand-100 p-4">
-            <p className="text-[13.5px] text-ink-900 font-medium mb-1">Accounts are created by administrators</p>
+            <p className="text-[13.5px] text-ink-900 font-medium mb-1">
+              {settings.users?.selfRegistration ? 'New accounts' : 'Accounts are created by administrators'}
+            </p>
             <p className="text-[13px] text-ink-700">
-              Students cannot register themselves. If a classmate needs access, ask the program office to add them
-              from the Users page.
+              {settings.users?.selfRegistration
+                ? 'Anyone can create an account from the sign-in page. Forgotten your password? Ask the program office for a new one.'
+                : 'Students cannot register themselves. If a classmate needs access, ask the program office to add them from the Users page.'}
             </p>
           </div>
         </div>

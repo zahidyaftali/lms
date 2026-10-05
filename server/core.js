@@ -165,10 +165,11 @@ export async function startSession(req, store, secret, { user, hash, auth, setti
     { collection: '_auth', id: user.id, data: { ...(auth || {}), userId: user.id, fails: 0, lockedUntil: null, sid } },
   ]
   if (settings.security.auditLog !== false) {
+    const id = newId('ev')
     rows.push({
       collection: 'events',
-      id: newId('ev'),
-      data: { type: 'login', text: via ? `signed in with ${via}` : 'signed in', actorId: user.id, targetId: null, at: now },
+      id,
+      data: { id, type: 'login', text: via ? `signed in with ${via}` : 'signed in', actorId: user.id, targetId: null, at: now },
     })
   }
   await store.upsert(rows)

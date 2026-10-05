@@ -72,7 +72,7 @@ export function DataProvider({ children }) {
         // A page refreshing itself while nobody is using it does not keep the session alive.
         const answer = await api.get(soft && idleFor() > 120000 ? 'data?bg=1' : 'data')
         const s = sync.current
-        if (soft && (s.running || (s.snapshot && diffState(stateRef.current, s.snapshot)))) return
+        if (soft && (s.running || (s.snapshot && diffState(stateRef.current, s.snapshot)))) return false
         const next = normalize({ ...emptyState(), ...answer.data })
         s.snapshot = answer.gate ? null : snapshotOf(next)
         adopt(next)
@@ -81,10 +81,11 @@ export function DataProvider({ children }) {
         setServer(answer.server || {})
         setSignedOutReason('')
         setBackend((b) => ({ ...b, status: 'ready', error: null }))
+        return true
       } catch (err) {
         if (err.status !== 401) {
           if (!soft) setBackend((b) => ({ ...b, status: b.status === 'ready' ? 'ready' : 'error', error: err.message }))
-          return
+          return false
         }
         if (meRef.current && /^(You were signed out|Signing in is not)/.test(err.message)) setSignedOutReason(err.message)
         const pub = await api.get('public').catch(() => ({}))
@@ -94,6 +95,7 @@ export function DataProvider({ children }) {
         setMe(null)
         setGate(null)
         setBackend((b) => ({ ...b, status: 'anonymous', error: null }))
+        return true
       }
     },
     [adopt],
@@ -121,6 +123,21 @@ export function DataProvider({ children }) {
     }
   }, [adopt, reload])
 
+  /**
+   * Fetches what the portal did by itself after a change (an automation, a
+   * certificate, a welcome email). It waits for edits still on their way to
+   * the server, so it tries again shortly when it finds some.
+   */
+  const refetch = useCallback(
+    async (triesLeft = 6) => {
+      const s = sync.current
+      if (!s.refetch) return
+      if (await reload({ soft: true })) s.refetch = false
+      else if (triesLeft > 0) setTimeout(() => refetch(triesLeft - 1), 700)
+    },
+    [reload],
+  )
+
   /** Sends whatever changed since the server last accepted the portal's state. */
   const pushChanges = useCallback(async () => {
     const s = sync.current
@@ -130,7 +147,11 @@ export function DataProvider({ children }) {
     }
     if (!s.snapshot || backendRef.current.status !== 'ready') return
     const payload = diffState(stateRef.current, s.snapshot)
-    if (!payload) return
+    if (!payload) {
+      // Nothing left to send: now is the moment to fetch what the portal did in response.
+      if (s.refetch) setTimeout(() => refetch(), 150)
+      return
+    }
     if (s.quiet) payload.quiet = true
     s.quiet = false
     s.running = true
@@ -172,11 +193,11 @@ export function DataProvider({ children }) {
         s.again = false
         pushChanges()
       } else if (s.refetch) {
-        s.refetch = false
-        reload({ soft: true })
+        // After this render, so the state no longer holds what was just sent.
+        setTimeout(() => refetch(), 150)
       }
     }
-  }, [reload])
+  }, [reload, refetch])
 
   /* --------------------------------------------- without a database: the browser does the server's jobs */
 

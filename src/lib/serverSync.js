@@ -50,7 +50,7 @@ const serialize = (collection, record) => {
 export function snapshotOf(state) {
   return {
     records: Object.fromEntries(
-      COLLECTIONS.map((c) => [c, new Map((state[c] || []).map((r) => [r.id, serialize(c, r)]))]),
+      COLLECTIONS.map((c) => [c, new Map((state[c] || []).filter((r) => r?.id).map((r) => [r.id, serialize(c, r)]))]),
     ),
     settings: JSON.stringify(state.settings),
     courseImports: JSON.stringify(state.courseImports || []),
@@ -68,6 +68,8 @@ export function diffState(state, snapshot) {
     const known = snapshot.records[c]
     const seen = new Set()
     for (const record of state[c] || []) {
+      // A record without an id cannot be stored or compared; it is left alone rather than re-sent forever.
+      if (!record?.id) continue
       seen.add(record.id)
       if (c === 'users' && record.password) passwords.push({ userId: record.id, password: record.password })
       if (known.get(record.id) !== serialize(c, record)) {

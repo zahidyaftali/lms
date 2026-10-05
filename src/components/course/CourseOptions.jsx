@@ -5,7 +5,10 @@ import IntroVideo, { hasIntroVideo } from './IntroVideo'
 import { toEmbedURL } from './media'
 import { putFile } from '../../lib/fileStore'
 import { publicCourseURL } from '../../lib/courseAccess'
-import { cx, fileSize, fullName } from '../../lib/utils'
+import CustomFieldInputs, { customFieldErrors } from '../users/CustomFieldInputs'
+import { COMPLETION_RULES } from '../../lib/rules.js'
+import { sellsCourses } from '../../lib/commerce.js'
+import { currencySymbol, cx, fileSize, fullName } from '../../lib/utils'
 
 const TABS = [
   { value: 'info', label: 'Info' },
@@ -39,6 +42,7 @@ function toDraft(course) {
     retainAccess: !!course.retainAccess,
     completionRule: course.completionRule || 'All units must be completed',
     certificateType: course.certificate ? course.certificateType || 'classic' : '',
+    custom: course.custom || {},
   }
 }
 
@@ -80,11 +84,14 @@ function fromDraft(d) {
     completionRule: d.completionRule,
     certificate: !!d.certificateType,
     certificateType: d.certificateType || null,
+    custom: d.custom,
   }
 }
 
-function findProblems(d, takenCodes) {
+function findProblems(d, takenCodes, customFields = []) {
   const problems = {}
+  const missing = Object.entries(customFieldErrors(customFields, d.custom))[0]
+  if (missing) problems.custom = { tab: 'info', message: missing[1], fields: customFieldErrors(customFields, d.custom) }
   const code = d.code.trim().toLowerCase()
   if (code && takenCodes.includes(code)) problems.code = { tab: 'info', message: 'Another course already uses this code.' }
   const video = d.introVideo
@@ -119,7 +126,7 @@ function CourseOptionsDrawer({
   const [tab, setTab] = useState('info')
   const [draft, setDraft] = useState(() => toDraft(course))
   const set = (changes) => setDraft((d) => ({ ...d, ...changes }))
-  const problems = findProblems(draft, takenCodes)
+  const problems = findProblems(draft, takenCodes, settings?.courses?.customFields)
 
   function save() {
     const first = Object.values(problems)[0]
@@ -161,7 +168,8 @@ function CourseOptionsDrawer({
 
 /* ------------------------------------------------------------------ tabs */
 
-function InfoTab({ draft, set, problems, categories, instructors }) {
+function InfoTab({ draft, set, problems, categories, instructors, settings }) {
+  const selling = sellsCourses(settings)
   const video = draft.introVideo || EMPTY_VIDEO
   const setVideo = (changes) => set({ introVideo: { ...video, ...changes } })
   const hasVideo = !!(video.url || video.fileId || video.src)
@@ -259,7 +267,15 @@ function InfoTab({ draft, set, problems, categories, instructors }) {
         {hasIntroVideo(draft.introVideo) && <IntroVideo video={draft.introVideo} className="mt-4" />}
       </Section>
 
-      <Section icon="banknote" title="Price" hint="Shown to learners in the catalog. The portal doesn't take payments, so it is for reference only.">
+      <Section
+        icon="banknote"
+        title="Price"
+        hint={
+          selling
+            ? 'Learners buy the course from the catalog at this price, less any discount or coupon. Leave empty for a free course.'
+            : 'Shown to learners in the catalog. No way to pay is switched on yet (Account & Settings → E-commerce), so learners request the course and you enroll them.'
+        }
+      >
         <div className="flex max-w-[220px]">
           <input
             type="number"
@@ -268,12 +284,12 @@ function InfoTab({ draft, set, problems, categories, instructors }) {
             inputMode="decimal"
             value={draft.price}
             placeholder="0"
-            aria-label="Price in US dollars"
+            aria-label="Price"
             onChange={(e) => set({ price: e.target.value })}
             className="field rounded-r-none"
           />
           <span className="h-11 px-3.5 flex items-center border border-l-0 border-[#d9dce2] rounded-r-md bg-gray-50 text-[14px] text-ink-700">
-            $
+            {currencySymbol()}
           </span>
         </div>
       </Section>
@@ -321,6 +337,20 @@ function InfoTab({ draft, set, problems, categories, instructors }) {
           </Select>
         </div>
       </Section>
+
+      {(settings?.courses?.customFields || []).length > 0 && (
+        <Section icon="list" title="More details" hint="The custom course fields set up in Account & Settings → Courses. Learners see them on the course's About page.">
+          <div className="max-w-[420px]">
+            <CustomFieldInputs
+              fields={settings.courses.customFields}
+              values={draft.custom}
+              onChange={(custom) => set({ custom })}
+              errors={problems.custom?.fields || {}}
+              className="!mb-4"
+            />
+          </div>
+        </Section>
+      )}
     </>
   )
 }
@@ -493,21 +523,39 @@ function LimitsTab({ draft, set, problems }) {
 function CompletionTab({ draft, set, course, settings }) {
   return (
     <>
-      <Section icon="checkSquare" title="Completion rule" hint="What counts as finishing this course.">
+      <Section
+        icon="checkSquare"
+        title="Completion rule"
+        hint={
+          draft.completionRule === 'Instructor marks the course complete'
+            ? 'Nobody completes this course by themselves: an instructor marks each learner complete from the Enrolled users panel.'
+            : draft.completionRule === 'Only the final test must be passed'
+              ? 'Passing the last test in the course completes it, whatever else is left. A course with no test falls back to all units.'
+              : 'What counts as finishing this course.'
+        }
+      >
         <div className="max-w-[320px]">
           <Select
             value={draft.completionRule}
             aria-label="Completion rule"
             onChange={(e) => set({ completionRule: e.target.value })}
           >
-            <option>All units must be completed</option>
-            <option>Only the final test must be passed</option>
-            <option>Instructor marks the course complete</option>
+            {COMPLETION_RULES.map((rule) => (
+              <option key={rule}>{rule}</option>
+            ))}
           </Select>
         </div>
       </Section>
 
-      <Section icon="award" title="Certificate" hint="The certificate learners receive when they complete the course.">
+      <Section
+        icon="award"
+        title="Certificate"
+        hint={
+          settings?.courses?.certificateEnabled === false
+            ? 'Certificates are switched off for the whole portal in Account & Settings → Courses, so none is issued whatever is chosen here.'
+            : 'The certificate learners receive when they complete the course.'
+        }
+      >
         <div className="max-w-[320px]">
           <label className="label" htmlFor="course-options-certificate">
             Type

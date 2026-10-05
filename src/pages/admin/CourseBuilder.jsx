@@ -16,6 +16,8 @@ import {
 } from '../../components/ui'
 import CourseHero from '../../components/course/CourseHero'
 import CourseOptions from '../../components/course/CourseOptions'
+import Discussion from '../../components/course/Discussion'
+import { statusLabel, statusTone } from '../../lib/rules.js'
 import IntroVideo, { hasIntroVideo } from '../../components/course/IntroVideo'
 import UnitEditor from '../../components/course/UnitEditor'
 import { DEFAULT_UNIT_DATA, unitIcon, unitLabel } from '../../components/course/unitTypes'
@@ -245,6 +247,7 @@ export default function CourseBuilder() {
             </div>
 
             <IconButton icon="users" title="Enrolled users" onClick={() => setPanel('users')} />
+            {settings.courses?.discussions && <IconButton icon="quote" title="Discussion" onClick={() => setPanel('discussion')} />}
             <IconButton
               icon="copy"
               title="Duplicate course"
@@ -453,6 +456,10 @@ export default function CourseBuilder() {
         toast={toast}
       />
 
+      <Drawer open={panel === 'discussion'} onClose={() => setPanel(null)} title="Discussion" subtitle={course.name} width="max-w-2xl" footer={<Button onClick={() => setPanel(null)}>Done</Button>}>
+        {panel === 'discussion' && <Discussion course={course} />}
+      </Drawer>
+
       <CourseOptions
         open={panel === 'settings'}
         course={course}
@@ -550,6 +557,7 @@ function CourseUsersPanel({ open, course, onClose, users, enrollments, progressO
   const rows = enrollments
     .map((e) => ({ ...e, user: users.find((u) => u.id === e.userId) }))
     .filter((r) => r.user)
+  const byInstructor = course.completionRule === 'Instructor marks the course complete'
 
   return (
     <Drawer
@@ -562,6 +570,7 @@ function CourseUsersPanel({ open, course, onClose, users, enrollments, progressO
       <div className="flex justify-between items-center mb-4">
         <p className="text-[13.5px] text-ink-500">
           {rows.length} enrolled · {rows.filter((r) => r.status === 'completed').length} completed
+          {byInstructor && ' · you mark this course complete for each learner'}
         </p>
         <Button size="sm" icon="userPlus" onClick={() => setPicker(true)}>
           Enroll users
@@ -579,12 +588,39 @@ function CourseUsersPanel({ open, course, onClose, users, enrollments, progressO
               <Avatar user={r.user} size={36} />
               <span className="flex-1 min-w-0">
                 <span className="block text-[14px] truncate">{fullName(r.user)}</span>
-                <span className="block text-[12.5px] text-ink-500">Enrolled {formatDate(r.enrolledAt)}</span>
+                <span className="block text-[12.5px] text-ink-500">
+                  Enrolled {formatDate(r.enrolledAt)}
+                  {r.score != null ? ` · score ${r.score}%` : ''}
+                </span>
               </span>
+              <Badge tone={statusTone(r.status)}>{statusLabel(r.status)}</Badge>
               <span className="w-28">
                 <Progress value={progressOf(r)} tone={progressOf(r) === 100 ? 'green' : 'brand'} />
               </span>
               <span className="text-[13px] text-ink-700 w-10 text-right">{progressOf(r)}%</span>
+              <button
+                onClick={() => {
+                  actions.markCourseComplete(r.userId, course.id, r.status !== 'completed')
+                  toast(r.status === 'completed' ? 'Completion removed.' : `${fullName(r.user)} marked as completed.`)
+                }}
+                className={r.status === 'completed' ? 'text-emerald-600 hover:text-ink-700 p-1' : 'text-ink-400 hover:text-emerald-600 p-1'}
+                title={r.status === 'completed' ? 'Completed — click to undo a completion you marked' : 'Mark as completed'}
+                disabled={r.status === 'completed' && !r.markedComplete}
+              >
+                <Icon name="checkCircle" className="w-[18px] h-[18px]" />
+              </button>
+              {(r.status === 'failed' || Object.keys(r.attempts || {}).length > 0) && (
+                <button
+                  onClick={() => {
+                    actions.resetProgress(r.userId, course.id)
+                    toast('Progress and test attempts reset.')
+                  }}
+                  className="text-ink-400 hover:text-brand-700 p-1"
+                  title="Reset progress and test attempts"
+                >
+                  <Icon name="refresh" className="w-4 h-4" />
+                </button>
+              )}
               <button
                 onClick={() => {
                   actions.unenroll(r.userId, course.id)

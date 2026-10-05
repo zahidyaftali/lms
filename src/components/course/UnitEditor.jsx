@@ -14,7 +14,8 @@ import {
 } from '../ui'
 import RichText from './RichText'
 import { DEFAULT_UNIT_DATA, isHtml, unitLabel } from './unitTypes'
-import { putFile } from '../../lib/fileStore'
+import { isSharedFile, putFile } from '../../lib/fileStore'
+import { useData } from '../../context/DataContext'
 import { fileSize, uid } from '../../lib/utils'
 
 export default function UnitEditor({ open, unit, onClose, onSave }) {
@@ -169,8 +170,12 @@ function MediaFields({ type, data, set }) {
                   const file = e.target.files?.[0]
                   if (!file) return
                   setBusy(true)
-                  const stored = await putFile(file)
-                  set({ fileId: stored.id, fileName: stored.name, fileSize: stored.size })
+                  try {
+                    const stored = await putFile(file)
+                    set({ fileId: stored.id, fileName: stored.name, fileSize: stored.size, localOnly: !!stored.local })
+                  } catch (err) {
+                    window.alert(err.message)
+                  }
                   setBusy(false)
                   e.target.value = ''
                 }}
@@ -182,6 +187,7 @@ function MediaFields({ type, data, set }) {
               </span>
             )}
           </div>
+          <LocalFileNote data={data} kind={type} />
         </Field>
       )}
 
@@ -210,8 +216,12 @@ function UploadField({ label, hint, accept, data, set }) {
               const file = e.target.files?.[0]
               if (!file) return
               setBusy(true)
-              const stored = await putFile(file)
-              set({ fileId: stored.id, fileName: stored.name, fileType: stored.type, fileSize: stored.size, url: '' })
+              try {
+                const stored = await putFile(file)
+                set({ fileId: stored.id, fileName: stored.name, fileType: stored.type, fileSize: stored.size, url: '', localOnly: !!stored.local })
+              } catch (err) {
+                window.alert(err.message)
+              }
               setBusy(false)
               e.target.value = ''
             }}
@@ -224,6 +234,7 @@ function UploadField({ label, hint, accept, data, set }) {
           </span>
         )}
       </div>
+      {!data.url && <LocalFileNote data={data} />}
     </Field>
   )
 }
@@ -505,6 +516,85 @@ function SurveyEditor({ data, set }) {
   )
 }
 
+/** Says so when an uploaded file is only in this browser and learners elsewhere cannot open it. */
+function LocalFileNote({ data, kind = 'file' }) {
+  if (!data.fileId || isSharedFile(data.fileId)) return null
+  return (
+    <p className="mt-2 flex gap-2 text-[13px] leading-5 text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+      <Icon name="alert" className="w-4 h-4 mt-0.5 shrink-0" />
+      <span>
+        This {kind} is stored in this browser only, so learners on other devices cannot open it. Files up to 4 MB are shared automatically once the shared
+        database is connected; for {kind === 'video' ? 'video, use a YouTube or Vimeo link' : 'anything larger, link to it instead'}.
+      </span>
+    </p>
+  )
+}
+
+const MEETING_PROVIDERS = [
+  ['zoom', 'Zoom'],
+  ['teams', 'Microsoft Teams'],
+  ['goto', 'GoTo Meeting'],
+  ['bbb', 'BigBlueButton'],
+]
+
+/** Where a session meets online: a link pasted in, or a room made through a connected service. */
+function SessionMeeting({ session, update }) {
+  const { settings, backend, actions } = useData()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const on = MEETING_PROVIDERS.filter(([id]) => settings.integrations?.[id]?.enabled)
+  const provider = session.meetingProvider || ''
+  const canCreate = backend.mode === 'server' && (provider === 'zoom' || provider === 'bbb')
+
+  async function create() {
+    setBusy(true)
+    setError('')
+    const minutes = session.start && session.end ? Math.max(15, Math.round((new Date(session.end) - new Date(session.start)) / 60000)) : 60
+    const res = await actions.rpc('meeting.create', { provider, topic: session.name || 'Session', start: session.start || null, durationMin: minutes }, { refresh: false })
+    setBusy(false)
+    if (!res.ok) return setError(res.error)
+    update({ meetingUrl: res.url || '', meetingId: res.meetingId || '' })
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-x-5">
+      <Field label="Meets online with">
+        <Select value={provider} onChange={(e) => update({ meetingProvider: e.target.value, meetingId: '', meetingUrl: e.target.value ? session.meetingUrl || '' : '' })}>
+          <option value="">In person only</option>
+          <option value="link">Another service (link)</option>
+          {on.map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {provider && (
+        <Field
+          label={provider === 'bbb' ? 'Room' : 'Join link'}
+          hint={
+            provider === 'bbb'
+              ? session.meetingId
+                ? 'A room is set up. It opens when the first person presses Join; instructors join as moderators.'
+                : 'Press Create room. Learners then get a Join button on this session.'
+              : 'Learners get a Join button on this session.'
+          }
+          error={error || undefined}
+        >
+          <div className="flex gap-2.5">
+            {provider !== 'bbb' && <Input value={session.meetingUrl || ''} onChange={(e) => update({ meetingUrl: e.target.value.trim() })} placeholder="https://" />}
+            {canCreate && (
+              <Button variant="outline" disabled={busy} onClick={create} className="shrink-0">
+                {busy ? 'Creating…' : provider === 'bbb' ? (session.meetingId ? 'New room' : 'Create room') : 'Create meeting'}
+              </Button>
+            )}
+          </div>
+        </Field>
+      )}
+    </div>
+  )
+}
+
 function IltEditor({ data, set }) {
   const sessions = data.sessions || []
   const update = (id, changes) =>
@@ -571,6 +661,7 @@ function IltEditor({ data, set }) {
             <Field label="Location">
               <Input value={s.location} onChange={(e) => update(s.id, { location: e.target.value })} />
             </Field>
+            <SessionMeeting session={s} update={(changes) => update(s.id, changes)} />
             <div className="grid grid-cols-2 gap-x-5">
               <Field label="Capacity">
                 <Input type="number" value={s.capacity} onChange={(e) => update(s.id, { capacity: Number(e.target.value) })} />

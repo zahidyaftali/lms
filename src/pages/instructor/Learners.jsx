@@ -15,6 +15,7 @@ import {
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
+import { statusLabel, statusTone } from '../../lib/rules.js'
 import { duration, formatDate, fullName, timeAgo, toCSV, download } from '../../lib/utils'
 
 export default function InstructorLearners() {
@@ -108,8 +109,8 @@ export default function InstructorLearners() {
             key: 'status',
             label: 'Status',
             render: (r) => (
-              <Badge tone={r.status === 'completed' ? 'green' : r.status === 'in_progress' ? 'blue' : 'gray'}>
-                {r.status === 'completed' ? 'Completed' : r.status === 'in_progress' ? 'In progress' : 'Not started'}
+              <Badge tone={statusTone(r.status)}>
+                {statusLabel(r.status)}
               </Badge>
             ),
           },
