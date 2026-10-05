@@ -167,20 +167,7 @@ export async function stripeSessionPaid(key, sessionId, orderId) {
   return { ok: true, paid, ref: res.json.payment_intent || sessionId }
 }
 
-export function paypalUrl(email, { order, name, currency, origin }) {
-  const q = new URLSearchParams({
-    cmd: '_xclick',
-    business: email,
-    item_name: name,
-    amount: Number(order.amount).toFixed(2),
-    currency_code: currency,
-    invoice: order.id,
-    no_shipping: '1',
-    return: `${origin}/catalog?order=${order.id}`,
-    cancel_return: `${origin}/catalog?cancelled=${order.id}`,
-  })
-  return `https://www.paypal.com/cgi-bin/webscr?${q}`
-}
+export { paypalLink as paypalUrl } from '../src/lib/commerce.js'
 
 /* ------------------------------------------------------- video conferencing */
 

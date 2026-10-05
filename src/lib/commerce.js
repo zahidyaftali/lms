@@ -82,6 +82,22 @@ export function paymentMethods(settings, { stripeReady = false } = {}) {
   return methods
 }
 
+/** A PayPal payment page for an order. PayPal does not report back, so the order waits for an administrator. */
+export function paypalLink(email, { order, name, currency, origin }) {
+  const q = new URLSearchParams({
+    cmd: '_xclick',
+    business: email,
+    item_name: name,
+    amount: Number(order.amount).toFixed(2),
+    currency_code: currency,
+    invoice: order.id,
+    no_shipping: '1',
+    return: `${origin}/catalog?order=${order.id}`,
+    cancel_return: `${origin}/catalog?cancelled=${order.id}`,
+  })
+  return `https://www.paypal.com/cgi-bin/webscr?${q}`
+}
+
 export const sellsCourses = (settings) => paymentMethods(settings, { stripeReady: true }).length > 0
 
 export function invoiceNumber(orders, now = Date.now()) {

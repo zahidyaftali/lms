@@ -64,6 +64,9 @@ export function canSelfEnroll(course, settings) {
   return !!settings?.courses?.allowSelfEnrollment && course?.enrollmentRequest === false
 }
 
+/** Units are taken in order when Account & Settings → Courses → Unit navigation says so. */
+export const unitsInOrder = (settings) => settings?.courses?.unitNavigation === 'In order'
+
 export function isPubliclyShared(course) {
   return !!course && course.status === 'active' && !!course.publicSharing
 }

@@ -426,6 +426,23 @@ function advancePaths(work, ev) {
   }
 }
 
+/** A completed course earns its certificate, unless the learner already holds one that is still valid. */
+function issueCertificate(work, ev) {
+  const settings = work.state.settings || {}
+  const course = work.find('courses', ev.courseId)
+  if (!course?.certificate || settings.courses?.certificateEnabled === false) return
+  const valid = work.list('certificates').some((c) => c.userId === ev.userId && c.courseId === ev.courseId && !certificateExpired(c, settings, work.ctx.now))
+  if (valid) return
+  work.put('certificates', {
+    id: work.ctx.makeId('cert'),
+    userId: ev.userId,
+    courseId: ev.courseId,
+    issuedAt: work.iso,
+    type: course.certificateType || String(settings.courses?.certificateTemplate || 'Classic').toLowerCase(),
+    code: certificateCode(course.code),
+  })
+}
+
 function welcome(work, ev) {
   const settings = work.state.settings || {}
   const user = work.find('users', ev.userId)
@@ -447,7 +464,10 @@ function welcome(work, ev) {
 }
 
 function handle(work, ev) {
-  if (ev.type === 'course.completed') advancePaths(work, ev)
+  if (ev.type === 'course.completed') {
+    issueCertificate(work, ev)
+    advancePaths(work, ev)
+  }
   if (ev.type === 'user.created') welcome(work, ev)
 
   for (const a of work.list('automations')) {

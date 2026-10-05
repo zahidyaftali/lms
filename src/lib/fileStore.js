@@ -24,7 +24,36 @@ function tx(mode) {
   return openDB().then((db) => db.transaction(STORE, mode).objectStore(STORE))
 }
 
-export async function putFile(file) {
+/** Set by the data layer: with the shared database, uploads are kept on the server so every device sees them. */
+let shared = false
+export function setSharedFiles(on) {
+  shared = !!on
+}
+
+/** The largest file the shared database takes; bigger ones stay in the uploading browser. */
+export const SHARED_FILE_LIMIT = 4 * 1024 * 1024
+export const isSharedFile = (id) => String(id || '').startsWith('srv_')
+const sharedURL = (id) => `/api/rpc?do=file.get&id=${encodeURIComponent(id)}`
+
+async function uploadShared(file, kind) {
+  const data = String(await readAsDataURL(file)).split(',')[1] || ''
+  const res = await fetch('/api/rpc?do=file.put', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, type: file.type, kind, data }),
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok || !body?.id) throw new Error(body?.error || 'The file could not be uploaded.')
+  return body
+}
+
+/**
+ * Stores an upload and returns { id, name, type, size, local }. `local` is true
+ * when the file only exists in this browser (no shared database, or too large for it).
+ */
+export async function putFile(file, kind = 'course') {
+  if (shared && file.size <= SHARED_FILE_LIMIT) return { ...(await uploadShared(file, kind)), local: false }
   const id = `file_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
   const store = await tx('readwrite')
   await new Promise((resolve, reject) => {
@@ -32,7 +61,7 @@ export async function putFile(file) {
     req.onsuccess = resolve
     req.onerror = () => reject(req.error)
   })
-  return { id, name: file.name, type: file.type, size: file.size }
+  return { id, name: file.name, type: file.type, size: file.size, local: true }
 }
 
 export async function getFile(id) {
@@ -46,6 +75,7 @@ export async function getFile(id) {
 }
 
 export async function getFileURL(id) {
+  if (isSharedFile(id)) return sharedURL(id)
   const rec = await getFile(id)
   return rec ? URL.createObjectURL(rec.blob) : null
 }

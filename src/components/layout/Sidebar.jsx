@@ -2,6 +2,8 @@ import { NavLink } from 'react-router-dom'
 import { Icon } from '../ui'
 import { cx } from '../../lib/utils'
 import { useAuth } from '../../context/AuthContext'
+import { useData } from '../../context/DataContext'
+import { useT } from '../../lib/i18n'
 
 const NAV = {
   admin: [
@@ -30,15 +32,27 @@ const NAV = {
   learner: [
     { to: '/', label: 'Home', icon: 'home', end: true },
     { to: '/my-courses', label: 'My courses', icon: 'book' },
+    { to: '/my-paths', label: 'Learning paths', icon: 'route', when: 'paths' },
     { to: '/catalog', label: 'Course catalog', icon: 'store' },
     { to: '/certificates', label: 'Certificates', icon: 'certificate' },
+    { to: '/achievements', label: 'Achievements', icon: 'trophy', when: 'gamification' },
+    { to: '/my-skills', label: 'Skills', icon: 'skill', when: 'skills' },
     { to: '/profile', label: 'My profile', icon: 'user' },
   ],
 }
 
 export default function Sidebar({ collapsed, mobileOpen, onHelp }) {
-  const { view } = useAuth()
-  const items = NAV[view] || NAV.learner
+  const { view, user } = useAuth()
+  const { settings, learningPaths } = useData()
+  const t = useT()
+
+  // Learner pages that depend on a feature being switched on, or on there being something to show.
+  const shown = {
+    paths: learningPaths.some((p) => p.status === 'active' && ((p.userIds || []).includes(user?.id) || p.selfEnroll)),
+    gamification: !!settings.gamification?.enabled,
+    skills: !!(settings.skills?.enabled && settings.skills.learners),
+  }
+  const items = (NAV[view] || NAV.learner).filter((item) => !item.when || shown[item.when])
 
   return (
     <aside
@@ -57,22 +71,18 @@ export default function Sidebar({ collapsed, mobileOpen, onHelp }) {
             key={item.to}
             to={item.to}
             end={item.end}
-            title={collapsed ? item.label : undefined}
+            title={collapsed ? t(item.label) : undefined}
             className={({ isActive }) =>
               cx(
                 'relative flex items-center gap-3.5 h-12 rounded-md px-4 transition-colors',
                 /* Collapsing only applies from lg up — the mobile drawer always shows labels. */
                 collapsed && 'lg:justify-center lg:px-0',
-                isActive
-                  ? 'bg-rail-active font-semibold'
-                  : 'hover:bg-rail-hover',
+                isActive ? 'bg-rail-active font-semibold' : 'hover:bg-rail-hover',
               )
             }
           >
             <Icon name={item.icon} className="w-[21px] h-[21px] shrink-0" strokeWidth={1.6} />
-            <span className={cx('text-[14px] leading-[22px] truncate', collapsed && 'lg:hidden')}>
-              {item.label}
-            </span>
+            <span className={cx('text-[14px] leading-[22px] truncate', collapsed && 'lg:hidden')}>{t(item.label)}</span>
           </NavLink>
         ))}
       </nav>
@@ -86,7 +96,7 @@ export default function Sidebar({ collapsed, mobileOpen, onHelp }) {
           )}
         >
           <Icon name="help" className="w-[21px] h-[21px] shrink-0" strokeWidth={1.6} />
-          <span className={cx('text-[14px] leading-[22px]', collapsed && 'lg:hidden')}>Help Center</span>
+          <span className={cx('text-[14px] leading-[22px]', collapsed && 'lg:hidden')}>{t('Help Center')}</span>
         </button>
       </div>
     </aside>

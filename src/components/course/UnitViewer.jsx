@@ -4,7 +4,7 @@ import { toEmbedURL, useFileURL } from './media'
 import { isHtml } from './unitTypes'
 import { cx, formatDateTime, uid } from '../../lib/utils'
 
-export default function UnitViewer({ unit, onComplete, completed, submission, onSubmitAssignment, onSubmitTest }) {
+export default function UnitViewer({ unit, onComplete, completed, submission, onSubmitAssignment, onSubmitTest, attemptsLeft = Infinity, bestScore = null, onJoinSession }) {
   if (!unit) return null
 
   switch (unit.type) {
@@ -22,7 +22,7 @@ export default function UnitViewer({ unit, onComplete, completed, submission, on
     case 'scorm':
       return <ScormUnit unit={unit} onComplete={onComplete} completed={completed} />
     case 'test':
-      return <TestUnit unit={unit} onSubmitTest={onSubmitTest} completed={completed} />
+      return <TestUnit unit={unit} onSubmitTest={onSubmitTest} completed={completed} attemptsLeft={attemptsLeft} bestScore={bestScore} />
     case 'survey':
       return <SurveyUnit unit={unit} onComplete={onComplete} completed={completed} />
     case 'assignment':
@@ -30,7 +30,7 @@ export default function UnitViewer({ unit, onComplete, completed, submission, on
         <AssignmentUnit unit={unit} submission={submission} onSubmitAssignment={onSubmitAssignment} completed={completed} />
       )
     case 'ilt':
-      return <IltUnit unit={unit} onComplete={onComplete} completed={completed} />
+      return <IltUnit unit={unit} onComplete={onComplete} completed={completed} onJoinSession={onJoinSession} />
     default:
       return <p className="hint">This unit type cannot be displayed.</p>
   }
@@ -198,7 +198,7 @@ function ScormUnit({ unit, onComplete, completed }) {
   )
 }
 
-function TestUnit({ unit, onSubmitTest, completed }) {
+function TestUnit({ unit, onSubmitTest, completed, attemptsLeft, bestScore }) {
   const questions = unit.data?.questions || []
   const [started, setStarted] = useState(false)
   const [answers, setAnswers] = useState({})
@@ -277,7 +277,10 @@ function TestUnit({ unit, onSubmitTest, completed }) {
             Your written answers have been sent to your instructor for review.
           </p>
         )}
-        {!result.passed && (
+        {!result.passed && attemptsLeft === 0 && (
+          <p className="hint mt-3">You have used every attempt this test allows. Contact your instructor if you need another.</p>
+        )}
+        {!result.passed && attemptsLeft > 0 && (
           <Button
             className="mt-6"
             variant="outline"
@@ -309,11 +312,17 @@ function TestUnit({ unit, onSubmitTest, completed }) {
           <li>{questions.length} questions</li>
           <li>Pass mark {unit.data?.passingScore || 0}%</li>
           <li>{limit ? `${limit} minute time limit` : 'No time limit'}</li>
-          <li>{unit.data?.maxAttempts ? `${unit.data.maxAttempts} attempts allowed` : 'Unlimited attempts'}</li>
+          <li>
+            {unit.data?.maxAttempts
+              ? `${unit.data.maxAttempts} attempts allowed · ${Number.isFinite(attemptsLeft) ? attemptsLeft : unit.data.maxAttempts} left`
+              : 'Unlimited attempts'}
+          </li>
+          {bestScore != null && <li>Your best score so far: {bestScore}%</li>}
         </ul>
-        <Button className="mt-6" disabled={!questions.length} onClick={() => setStarted(true)}>
+        <Button className="mt-6" disabled={!questions.length || attemptsLeft === 0} onClick={() => setStarted(true)}>
           {completed ? 'Retake test' : 'Start test'}
         </Button>
+        {attemptsLeft === 0 && !completed && <p className="hint mt-3">No attempts left. Contact your instructor if you need another.</p>}
         {!questions.length && <p className="hint mt-3">This test has no questions yet.</p>}
       </div>
     )
@@ -539,7 +548,7 @@ function AssignmentUnit({ unit, submission, onSubmitAssignment, completed }) {
   )
 }
 
-function IltUnit({ unit, onComplete, completed }) {
+function IltUnit({ unit, onComplete, completed, onJoinSession }) {
   const sessions = unit.data?.sessions || []
   return (
     <div>
@@ -561,6 +570,11 @@ function IltUnit({ unit, onComplete, completed }) {
                   </p>
                 )}
                 {s.instructor && <p className="text-[13px] text-ink-500 mt-1">Instructor: {s.instructor}</p>}
+                {(s.meetingUrl || s.meetingId) && onJoinSession && (
+                  <Button size="sm" icon="video" className="mt-3" onClick={() => onJoinSession(s)}>
+                    Join online session
+                  </Button>
+                )}
               </div>
               <Badge tone="blue">{s.capacity ? `${s.capacity} seats` : 'Open'}</Badge>
             </div>

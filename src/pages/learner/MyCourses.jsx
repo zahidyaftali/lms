@@ -2,15 +2,20 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, EmptyState, Icon, PageHeader, Progress, SearchInput, Tabs } from '../../components/ui'
 import CourseHero from '../../components/course/CourseHero'
-import { useSelectors } from '../../context/DataContext'
+import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { accessWindow } from '../../lib/courseAccess'
-import { formatDate } from '../../lib/utils'
+import { statusLabel, statusTone } from '../../lib/rules.js'
+import { formatDate, formatDay } from '../../lib/utils'
+import { useT } from '../../lib/i18n'
 
 export default function MyCourses() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { coursesOfLearner, progressOf } = useSelectors()
+  const { settings } = useData()
+  const t = useT()
+  const showBar = settings.courses?.showProgressBar !== false
   const [tab, setTab] = useState('all')
   const [query, setQuery] = useState('')
 
@@ -20,7 +25,7 @@ export default function MyCourses() {
     const q = query.trim().toLowerCase()
     return items.filter(({ course, enrollment }) => {
       if (q && !course.name.toLowerCase().includes(q)) return false
-      if (tab === 'progress' && enrollment.status !== 'in_progress') return false
+      if (tab === 'progress' && enrollment.status !== 'in_progress' && enrollment.status !== 'failed') return false
       if (tab === 'completed' && enrollment.status !== 'completed') return false
       if (tab === 'notstarted' && enrollment.status !== 'not_started') return false
       return true
@@ -29,15 +34,15 @@ export default function MyCourses() {
 
   return (
     <div>
-      <PageHeader title="My courses" subtitle="Courses assigned to you by GA Healthcare Training." />
+      <PageHeader title={t('My courses')} subtitle={t('Courses assigned to you by GA Healthcare Training.')} />
 
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <Tabs
           tabs={[
-            { value: 'all', label: 'All', count: items.length },
-            { value: 'progress', label: 'In progress', count: items.filter((i) => i.enrollment.status === 'in_progress').length },
-            { value: 'notstarted', label: 'Not started', count: items.filter((i) => i.enrollment.status === 'not_started').length },
-            { value: 'completed', label: 'Completed', count: items.filter((i) => i.enrollment.status === 'completed').length },
+            { value: 'all', label: t('All'), count: items.length },
+            { value: 'progress', label: t('In progress'), count: items.filter((i) => i.enrollment.status === 'in_progress' || i.enrollment.status === 'failed').length },
+            { value: 'notstarted', label: t('Not started'), count: items.filter((i) => i.enrollment.status === 'not_started').length },
+            { value: 'completed', label: t('Completed'), count: items.filter((i) => i.enrollment.status === 'completed').length },
           ]}
           active={tab}
           onChange={setTab}
@@ -50,8 +55,8 @@ export default function MyCourses() {
         <div className="card">
           <EmptyState
             icon="book"
-            title="No courses here yet"
-            message="When your program office assigns a course, it will appear on this page."
+            title={t('No courses here yet')}
+            message={t('When your program office assigns a course, it will appear on this page.')}
           />
         </div>
       ) : (
@@ -65,31 +70,31 @@ export default function MyCourses() {
                 <div className="p-5 flex-1 flex flex-col">
                   <div className="flex items-start gap-3 mb-2">
                     <h3 className="text-[15.5px] font-semibold leading-6 flex-1">{course.name}</h3>
-                    <Badge tone={enrollment.status === 'completed' ? 'green' : enrollment.status === 'in_progress' ? 'blue' : 'gray'}>
-                      {enrollment.status === 'completed' ? 'Completed' : enrollment.status === 'in_progress' ? 'In progress' : 'Not started'}
-                    </Badge>
+                    <Badge tone={statusTone(enrollment.status)}>{t(statusLabel(enrollment.status))}</Badge>
                   </div>
                   <p className="hint line-clamp-2 mb-4">{course.description}</p>
 
                   <div className="mt-auto">
-                    <div className="flex items-center gap-3 mb-4">
-                      <Progress value={value} className="flex-1" tone={value === 100 ? 'green' : 'brand'} />
-                      <span className="text-[12.5px] text-ink-700 w-9">{value}%</span>
-                    </div>
+                    {showBar && (
+                      <div className="flex items-center gap-3 mb-4">
+                        <Progress value={value} className="flex-1" tone={value === 100 ? 'green' : 'brand'} />
+                        <span className="text-[12.5px] text-ink-700 w-9">{value}%</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-3">
                       {access.state === 'open' ? (
                         <span className="hint flex items-center gap-1.5">
                           <Icon name={access.ends ? 'clock' : 'calendar'} className="w-4 h-4" />
                           {access.ends
-                            ? `Access until ${formatDate(access.ends)}`
-                            : `Enrolled ${formatDate(enrollment.enrolledAt)}`}
+                            ? `${t('Access until')} ${formatDay(access.ends)}`
+                            : `${t('Enrolled')} ${formatDate(enrollment.enrolledAt)}`}
                         </span>
                       ) : (
                         <span className="hint flex items-center gap-1.5">
                           <Icon name="lock" className="w-4 h-4" />
                           {access.state === 'upcoming'
-                            ? `Opens ${formatDate(access.starts)}`
-                            : `Access ended ${formatDate(access.ends)}`}
+                            ? `${t('Opens')} ${formatDay(access.starts)}`
+                            : `${t('Access ended')} ${formatDay(access.ends)}`}
                         </span>
                       )}
                       <Button
@@ -97,15 +102,17 @@ export default function MyCourses() {
                         disabled={access.state !== 'open'}
                         onClick={() => navigate(`/my-courses/${course.id}`)}
                       >
-                        {access.state === 'upcoming'
-                          ? 'Not open yet'
-                          : access.state === 'expired'
-                            ? 'Expired'
-                            : value === 0
-                              ? 'Start'
-                              : value === 100
-                                ? 'Review'
-                                : 'Continue'}
+                        {t(
+                          access.state === 'upcoming'
+                            ? 'Not open yet'
+                            : access.state === 'expired'
+                              ? 'Expired'
+                              : enrollment.status === 'not_started'
+                                ? 'Start'
+                                : enrollment.status === 'completed'
+                                  ? 'Review'
+                                  : 'Continue',
+                        )}
                       </Button>
                     </div>
                   </div>

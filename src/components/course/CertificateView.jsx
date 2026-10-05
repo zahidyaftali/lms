@@ -14,15 +14,15 @@ const SIGNATORY = { name: 'Dr. Yolaine Nozile, PhD, RN', title: 'Program Directo
  * The printable certificate. Every template carries the `certificate-sheet`
  * class, which the print stylesheet uses to hide the rest of the page.
  */
-export default function CertificateView({ type = 'classic', recipient, courseName, issuedAt, code, settings }) {
-  const props = { recipient, courseName, date: formatDate(issuedAt), code, settings }
+export default function CertificateView({ type = 'classic', recipient, courseName, issuedAt, expiresAt, code, settings }) {
+  const props = { recipient, courseName, date: formatDate(issuedAt), code, settings, validUntil: expiresAt ? formatDate(expiresAt) : null }
   if (type === 'fancy') return <Fancy {...props} />
   if (type === 'modern') return <Modern {...props} />
   if (type === 'simple') return <Simple {...props} />
   return <Classic {...props} />
 }
 
-function Classic({ recipient, courseName, date, code, settings }) {
+function Classic({ recipient, courseName, date, code, settings, validUntil }) {
   return (
     <div className="certificate-sheet border-4 border-double border-gold-500 p-10 text-center bg-white">
       <p className="text-[11.5px] tracking-[0.3em] uppercase text-gold-600 font-semibold">{ISSUER}</p>
@@ -32,12 +32,12 @@ function Classic({ recipient, courseName, date, code, settings }) {
       <p className="hint mt-5">has successfully completed</p>
       <p className="text-[18px] font-medium mt-2">{courseName}</p>
       <SignatureRow date={date} code={code} />
-      <Verify settings={settings} />
+      <Verify settings={settings} code={code} validUntil={validUntil} />
     </div>
   )
 }
 
-function Fancy({ recipient, courseName, date, code, settings }) {
+function Fancy({ recipient, courseName, date, code, settings, validUntil }) {
   return (
     <div className="certificate-sheet bg-navy-900 p-3">
       <div className="relative bg-[#fffcf2] border-2 border-gold-500 px-8 sm:px-12 py-12 text-center">
@@ -57,13 +57,13 @@ function Fancy({ recipient, courseName, date, code, settings }) {
         <p className="hint mt-5">for successfully completing</p>
         <p className="text-[18px] font-semibold text-navy-900 mt-2">{courseName}</p>
         <SignatureRow date={date} code={code} />
-        <Verify settings={settings} />
+        <Verify settings={settings} code={code} validUntil={validUntil} />
       </div>
     </div>
   )
 }
 
-function Modern({ recipient, courseName, date, code }) {
+function Modern({ recipient, courseName, date, code, validUntil }) {
   return (
     <div className="certificate-sheet bg-white border border-line flex flex-col sm:flex-row sm:min-h-[380px]">
       <div className="sm:w-[34%] bg-navy-900 text-white p-8 flex flex-col justify-between gap-8 relative overflow-hidden">
@@ -96,14 +96,14 @@ function Modern({ recipient, courseName, date, code }) {
   )
 }
 
-function Simple({ recipient, courseName, date, code }) {
+function Simple({ recipient, courseName, date, code, validUntil }) {
   return (
     <div className="certificate-sheet bg-white border border-[#d9dce2] p-8 sm:p-10">
       <p className="text-[12.5px] text-ink-500">{ISSUER}</p>
       <h3 className="text-[24px] font-bold text-ink-900 mt-8">Certificate of Completion</h3>
       <p className="text-[14.5px] text-ink-700 leading-7 mt-5">
         This certifies that <strong className="font-semibold text-ink-900">{recipient}</strong> has successfully
-        completed <strong className="font-semibold text-ink-900">{courseName}</strong> on {date}.
+        completed <strong className="font-semibold text-ink-900">{courseName}</strong> on {date}.{validUntil ? ` Valid until ${validUntil}.` : ''}
       </p>
       <div className="mt-12 pt-5 border-t border-line flex flex-wrap justify-between gap-3 text-[12px] text-ink-500">
         <span>
@@ -134,11 +134,17 @@ function SignatureRow({ date, code }) {
   )
 }
 
-function Verify({ settings }) {
+/** Where anyone can check the certificate number: the portal's own address, or its custom domain. */
+export function verifyAddress(settings, code) {
+  const host = settings?.customDomain?.trim() || (typeof window !== 'undefined' ? window.location.host : settings?.domain) || ''
+  return `${host}/verify/${code}`
+}
+
+function Verify({ settings, code, validUntil }) {
   if (!settings) return null
   return (
     <p className="text-[11px] text-ink-400 mt-8">
-      Verify at {settings.domain} · {settings.supportEmail}
+      {validUntil ? `Valid until ${validUntil} · ` : ''}Verify at {verifyAddress(settings, code)}
     </p>
   )
 }
