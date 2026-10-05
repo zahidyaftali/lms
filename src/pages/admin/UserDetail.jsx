@@ -16,12 +16,14 @@ import { EnrollModal } from './Users'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { CredentialsDialog, SetPasswordDialog } from '../../components/users/AccountDialogs'
+import { customFieldText } from '../../components/users/CustomFieldInputs'
+import { statusLabel, statusTone } from '../../lib/rules.js'
 import { duration, formatDate, fullName, timeAgo } from '../../lib/utils'
 
 export default function UserDetail() {
   const { userId } = useParams()
   const navigate = useNavigate()
-  const { courses, groups, branches, certificates, submissions, actions } = useData()
+  const { courses, groups, branches, certificates, submissions, settings, learningPaths = [], actions } = useData()
   const { userById, enrollmentsOf, progressOf, courseById } = useSelectors()
   const toast = useToast()
   const [tab, setTab] = useState('courses')
@@ -64,7 +66,7 @@ export default function UserDetail() {
         <Button
           variant={user.active ? 'ghost' : 'primary'}
           icon={user.active ? 'lock' : 'check'}
-          onClick={() => actions.updateUser(user.id, { active: !user.active })}
+          onClick={() => actions.updateUser(user.id, user.active ? { active: false } : { active: true, pending: null })}
         >
           {user.active ? 'Deactivate' : 'Activate'}
         </Button>
@@ -76,8 +78,8 @@ export default function UserDetail() {
             <Avatar user={user} size={84} />
             <p className="mt-4 text-[17px] font-semibold">{fullName(user)}</p>
             <p className="hint">{user.userType}</p>
-            <Badge tone={user.active ? 'green' : 'gray'} className="mt-3">
-              {user.active ? 'Active' : 'Inactive'}
+            <Badge tone={user.active ? 'green' : user.pending ? 'amber' : 'gray'} className="mt-3">
+              {user.active ? 'Active' : user.pending === 'email' ? 'Email not confirmed' : user.pending ? 'Awaiting activation' : 'Inactive'}
             </Badge>
           </div>
           <dl className="pt-5 space-y-4 text-[13.5px]">
@@ -90,6 +92,11 @@ export default function UserDetail() {
             />
             <Row label="Registered" value={formatDate(user.registeredAt)} />
             <Row label="Last login" value={user.lastLogin ? timeAgo(user.lastLogin) : 'Never'} />
+            {settings.ecommerce?.credits && <Row label="Credits" value={Number(user.credits) || 0} />}
+            {(settings.users?.customFields || []).map((f) => {
+              const value = customFieldText(f, user.custom?.[f.id])
+              return value ? <Row key={f.id} label={f.name} value={value} /> : null
+            })}
             <Row
               label="Training time"
               value={duration(enrollments.reduce((sum, e) => sum + (e.timeSpentMin || 0), 0))}
@@ -139,9 +146,7 @@ export default function UserDetail() {
                   key: 'status',
                   label: 'Status',
                   render: (e) => (
-                    <Badge tone={e.status === 'completed' ? 'green' : e.status === 'in_progress' ? 'blue' : 'gray'}>
-                      {e.status === 'completed' ? 'Completed' : e.status === 'in_progress' ? 'In progress' : 'Not started'}
-                    </Badge>
+                    <Badge tone={statusTone(e.status)}>{statusLabel(e.status)}</Badge>
                   ),
                 },
                 { key: 'enrolledAt', label: 'Enrolled', render: (e) => formatDate(e.enrolledAt) },
@@ -149,6 +154,11 @@ export default function UserDetail() {
               rows={enrollments}
               actions={(e) => (
                 <>
+                  {e.status !== 'completed' && (
+                    <MenuItem icon="check" onClick={() => actions.markCourseComplete(user.id, e.courseId, true)}>
+                      Mark as completed
+                    </MenuItem>
+                  )}
                   <MenuItem icon="refresh" onClick={() => actions.resetProgress(user.id, e.courseId)}>
                     Reset progress
                   </MenuItem>
@@ -180,7 +190,7 @@ export default function UserDetail() {
                     <li key={c.id} className="flex items-center gap-4 border border-line rounded-md px-4 py-3.5">
                       <Icon name="certificate" className="w-6 h-6 text-gold-500" />
                       <span className="flex-1">
-                        <span className="block text-[14px] font-medium">{courseById(c.courseId)?.name}</span>
+                        <span className="block text-[14px] font-medium">{courseById(c.courseId)?.name || learningPaths.find((p) => p.id === c.pathId)?.name || 'Removed course'}</span>
                         <span className="block hint">
                           Issued {formatDate(c.issuedAt)} · {c.code}
                         </span>

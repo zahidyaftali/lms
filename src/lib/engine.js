@@ -359,6 +359,7 @@ function deliver(work, to, subject, body, meta = {}) {
       status: 'queued',
       kind: meta.kind || 'notification',
       rule: meta.rule || '',
+      ...(meta.privateBody ? { privateBody: meta.privateBody } : {}),
     })
   }
 }
@@ -449,18 +450,24 @@ function welcome(work, ev) {
   if (!settings.users?.welcomeEmail || !user?.active || !user.email) return
   const password = work.ctx.passwords?.[user.id]
   const origin = work.ctx.origin || ''
-  const body = [
-    `Hello ${user.firstName || ''},`.replace(' ,', ','),
-    '',
-    `Your account at ${settings.siteName} is ready.`,
-    '',
-    `Sign in at: ${origin}/login`,
-    `Email: ${user.email}`,
-    password ? `Password: ${password}` : 'Your password was given to you by the program office.',
-    '',
-    settings.siteName,
-  ].join('\n')
-  deliver(work, user, `Your ${settings.siteName} account`, body, { kind: 'welcome', inbox: false })
+  const text = (passwordLine) =>
+    [
+      `Hello ${user.firstName || ''},`.replace(' ,', ','),
+      '',
+      `Your account at ${settings.siteName} is ready.`,
+      '',
+      `Sign in at: ${origin}/login`,
+      `Email: ${user.email}`,
+      passwordLine,
+      '',
+      settings.siteName,
+    ].join('\n')
+  // The password goes out in the email only. What is kept in the Sent log never contains it.
+  deliver(work, user, `Your ${settings.siteName} account`, text('Your password was set by the program office. If you do not have it, ask them for a new one.'), {
+    kind: 'welcome',
+    inbox: false,
+    privateBody: password ? text(`Password: ${password}`) : undefined,
+  })
 }
 
 function handle(work, ev) {

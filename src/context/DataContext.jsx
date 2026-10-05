@@ -202,7 +202,7 @@ export function DataProvider({ children }) {
     }
     if (!hasOps(ops)) return base
     if (ops.upserts.outbox) {
-      ops.upserts.outbox = ops.upserts.outbox.map((m) =>
+      ops.upserts.outbox = ops.upserts.outbox.map(({ privateBody, ...m }) =>
         m.status === 'queued' ? { ...m, status: 'skipped', error: 'Email is sent by the server: connect the shared database and an email service.' } : m,
       )
     }
@@ -236,6 +236,23 @@ export function DataProvider({ children }) {
       clearInterval(timer)
     }
   }, [backend.mode, applyEngine])
+
+  /** Automations → “Check now”: runs whatever is due without waiting for the next check. */
+  const runEngine = useCallback(async () => {
+    if (backendRef.current.mode === 'server') {
+      try {
+        const answer = await api.post('rpc?do=engine.run', {})
+        await reload({ soft: true })
+        return { ok: true, changed: !!answer.changed }
+      } catch (err) {
+        return { ok: false, error: err.message }
+      }
+    }
+    const current = stateRef.current
+    const ops = tick(current, { now: Date.now(), makeId: uid, origin: window.location.origin })
+    engineBase.current = applyEngine(current, ops)
+    return { ok: true, changed: hasOps(ops) }
+  }, [applyEngine, reload])
 
   /** A wholesale replacement of the data is not something to react to user by user. */
   const rebase = () => {
@@ -410,9 +427,18 @@ export function DataProvider({ children }) {
   )
 
   /* ---------------------------------------------------------------- users */
+
+  /** Subscription → Limits: whether one more active account would go over the ceiling set there. */
+  const overUserLimit = (extra = 0) => {
+    const limit = Number(stateRef.current.settings.subscription?.userLimit) || 0
+    return limit > 0 && stateRef.current.users.filter((u) => u.active).length + extra >= limit
+  }
+
   const addUser = useCallback(
     (user) => {
       const { settings, groups } = stateRef.current
+      if (user.active !== false && overUserLimit())
+        setNotice({ id: uid('n'), tone: 'info', text: 'The active user limit set on the Subscription page has been reached, so the new account was added as inactive.' })
       // Accounts created without choosing groups (an import) join the default group and get its courses.
       const fallback = user.groupIds === undefined ? groups.find((g) => g.id === settings.users?.defaultGroupId) : null
       const id = uid('u')
@@ -433,6 +459,7 @@ export function DataProvider({ children }) {
         lastLogin: null,
         ...user,
         groupIds: user.groupIds ?? (fallback ? [fallback.id] : []),
+        active: user.active !== false && !overUserLimit(),
         // Someone who signed up chose their own password; nobody needs to replace it.
         ...(user.password ? { ...stamp(id), ...(user.selfRegistered ? { mustChangePassword: false } : {}) } : {}),
       }
@@ -490,12 +517,22 @@ export function DataProvider({ children }) {
   )
 
   const updateCourse = useCallback(
-    (id, changes) =>
+    (id, given) => {
+      let changes = given
+      const { settings, courses } = stateRef.current
+      const limit = Number(settings.subscription?.courseLimit) || 0
+      const wasActive = courses.find((c) => c.id === id)?.status === 'active'
+      // Subscription → Limits: a course cannot be activated past the ceiling set there.
+      if (changes.status === 'active' && !wasActive && limit > 0 && courses.filter((c) => c.status === 'active').length >= limit) {
+        changes = { ...changes, status: 'inactive', published: false }
+        setNotice({ id: uid('n'), tone: 'error', text: `The active course limit of ${limit} set on the Subscription page has been reached, so the course was left inactive.` })
+      }
       patch((prev) => ({
         courses: prev.courses.map((x) =>
           x.id === id ? { ...x, ...changes, updatedAt: new Date().toISOString() } : x,
         ),
-      })),
+      }))
+    },
     [patch],
   )
 
@@ -972,6 +1009,7 @@ export function DataProvider({ children }) {
       signOut,
       reload,
       rpc,
+      runEngine,
       changePassword,
       acceptTerms,
       uploadLocalData,
@@ -1014,6 +1052,7 @@ export function DataProvider({ children }) {
       signOut,
       reload,
       rpc,
+      runEngine,
       changePassword,
       acceptTerms,
       uploadLocalData,

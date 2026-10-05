@@ -1,15 +1,21 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ActivityChart, DonutChart, MiniBars } from '../../components/charts/Charts'
-import { Badge, Button, DataTable, PageHeader, Progress, SearchInput, Select, Tabs, Icon } from '../../components/ui'
+import { Badge, Button, DataTable, EmptyState, MenuItem, PageHeader, Progress, SearchInput, Select, Tabs, Icon } from '../../components/ui'
+import InvoiceDialog, { OrderStatus, PAYMENT_METHOD, orderAmount } from '../../components/course/Invoice'
+import { useToast } from '../../context/ToastContext'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { cx, download, duration, formatDate, fullName, shortName, timeAgo, toCSV } from '../../lib/utils'
 
 export default function Reports() {
-  const { users, courses, enrollments, events, submissions } = useData()
+  const { users, courses, enrollments, events, submissions, orders = [], actions } = useData()
+  const toast = useToast()
+  const [params] = useSearchParams()
+  const [invoice, setInvoice] = useState(null)
   const { progressOf, userById, courseById, coursesOfInstructor } = useSelectors()
   const { user, view } = useAuth()
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState(() => (params.get('tab') === 'sales' && view === 'admin' ? 'sales' : 'overview'))
   const [query, setQuery] = useState('')
   const [courseFilter, setCourseFilter] = useState('')
 
@@ -29,11 +35,23 @@ export default function Reports() {
       color: '#1a56db',
     },
     {
+      label: 'Failed',
+      value: scopedEnrollments.filter((e) => e.status === 'failed').length,
+      color: '#dc2626',
+    },
+    {
       label: 'Not started',
       value: scopedEnrollments.filter((e) => e.status === 'not_started').length,
       color: '#cbd5e1',
     },
-  ]
+  ].filter((s) => s.value > 0 || s.label !== 'Failed')
+
+  const sales = [...orders].sort((a, b) => (a.at < b.at ? 1 : -1))
+  const paidOrders = sales.filter((o) => o.status === 'paid')
+  // Totals are kept per currency: orders keep the currency they were placed in.
+  const revenue = Object.entries(
+    paidOrders.reduce((sum, o) => ({ ...sum, [o.currency || 'USD']: (sum[o.currency || 'USD'] || 0) + (Number(o.amount) || 0) }), {}),
+  )
 
   const chartData = useMemo(() => {
     const buckets = []
@@ -96,7 +114,23 @@ export default function Reports() {
           variant="ghost"
           icon="download"
           onClick={() => {
-            if (tab === 'users') {
+            if (tab === 'sales') {
+              download(
+                'sales-report.csv',
+                toCSV(sales, [
+                  { label: 'Date', value: (o) => formatDate(o.at) },
+                  { label: 'Buyer', value: (o) => fullName(userById(o.userId)) },
+                  { label: 'Email', value: (o) => userById(o.userId)?.email || '' },
+                  { label: 'Item', value: (o) => o.name },
+                  { label: 'Amount', value: (o) => Number(o.amount || 0).toFixed(2) },
+                  { label: 'Currency', value: (o) => o.currency },
+                  { label: 'Coupon', value: (o) => o.coupon || '' },
+                  { label: 'Paid by', value: (o) => PAYMENT_METHOD[o.method] || o.method },
+                  { label: 'Status', value: (o) => o.status },
+                  { label: 'Invoice', value: (o) => o.invoiceNo || '' },
+                ]),
+              )
+            } else if (tab === 'users') {
               download(
                 'user-report.csv',
                 toCSV(userRows, [
@@ -132,6 +166,7 @@ export default function Reports() {
           { value: 'courses', label: 'Course reports' },
           { value: 'users', label: 'User reports' },
           { value: 'timeline', label: 'Activity log' },
+          ...(view === 'admin' ? [{ value: 'sales', label: 'Sales', count: sales.filter((o) => o.status === 'pending').length || undefined }] : []),
         ]}
         active={tab}
         onChange={setTab}
@@ -252,6 +287,66 @@ export default function Reports() {
               },
             ]}
           />
+        </>
+      )}
+
+      {tab === 'sales' && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Figure label="Paid orders" value={paidOrders.length} icon="cart" />
+            <Figure label="Revenue" value={revenue.length ? revenue.map(([currency, amount]) => orderAmount({ currency, amount })).join(' + ') : '-'} icon="banknote" />
+            <Figure label="Awaiting payment" value={sales.filter((o) => o.status === 'pending').length} icon="clock" />
+            <Figure label="Coupons used" value={paidOrders.filter((o) => o.coupon).length} icon="tag" />
+          </div>
+          <DataTable
+            rows={sales}
+            defaultSort={{ key: 'at', dir: 'desc' }}
+            empty={<EmptyState icon="cart" title="No orders yet" message="Orders appear here when learners buy a course or a subscription. Ways to pay are set up in Account & Settings → E-commerce." />}
+            columns={[
+              { key: 'at', label: 'Date', render: (o) => formatDate(o.at) },
+              {
+                key: 'buyer',
+                label: 'Buyer',
+                sortValue: (o) => fullName(userById(o.userId)),
+                render: (o) => (
+                  <span>
+                    <span className="block">{fullName(userById(o.userId))}</span>
+                    <span className="block text-[12.5px] text-ink-500">{userById(o.userId)?.email}</span>
+                  </span>
+                ),
+              },
+              { key: 'name', label: 'Item', render: (o) => <span>{o.name}{o.coupon ? <span className="text-ink-500"> · {o.coupon}</span> : null}</span> },
+              { key: 'amount', label: 'Amount', sortValue: (o) => Number(o.amount) || 0, render: (o) => orderAmount(o) },
+              { key: 'method', label: 'Paid by', render: (o) => PAYMENT_METHOD[o.method] || o.method },
+              { key: 'status', label: 'Status', render: (o) => <OrderStatus order={o} /> },
+            ]}
+            actions={(o) => (
+              <>
+                {o.status === 'pending' && (
+                  <MenuItem
+                    icon="check"
+                    onClick={async () => {
+                      const res = await actions.settleOrder(o.id)
+                      toast(res?.ok === false ? res.error : 'Marked as paid. The learner has what they bought.', res?.ok === false ? 'error' : 'success')
+                    }}
+                  >
+                    Mark as paid
+                  </MenuItem>
+                )}
+                {o.status === 'paid' && (
+                  <MenuItem icon="file" onClick={() => setInvoice(o)}>
+                    {o.invoiceNo ? 'Invoice' : 'Receipt'}
+                  </MenuItem>
+                )}
+                {o.status === 'pending' && (
+                  <MenuItem icon="x" danger onClick={() => actions.cancelOrder(o.id)}>
+                    Cancel order
+                  </MenuItem>
+                )}
+              </>
+            )}
+          />
+          <InvoiceDialog order={invoice} buyer={invoice && userById(invoice.userId)} onClose={() => setInvoice(null)} />
         </>
       )}
 

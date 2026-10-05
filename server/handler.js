@@ -189,6 +189,7 @@ const routes = {
           stripe: !!secrets.stripeSecretKey,
           email: emailReady(s.settings, secrets),
           twoFactor: !!s.auth.totp?.enabled,
+          ip: clientIp(req),
         },
       },
       headers,

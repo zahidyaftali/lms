@@ -19,7 +19,7 @@ import {
 } from '../../components/ui'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
-import { formatDate, plural } from '../../lib/utils'
+import { formatDate, formatDateTime, plural } from '../../lib/utils'
 
 /**
  * What an automation can do. `needs` lists the inputs the rule takes:
@@ -58,7 +58,9 @@ const empty = {
 }
 
 export default function Automations() {
-  const { automations = [], courses, actions } = useData()
+  const { automations = [], courses, jobs = [], settings, backend, actions } = useData()
+  const [checking, setChecking] = useState(false)
+  const waiting = (a) => jobs.filter((j) => j.automationId === a.id && j.status === 'pending').length
   const toast = useToast()
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null)
@@ -166,8 +168,21 @@ export default function Automations() {
       </PageHeader>
 
       <SetupNote>
-        Automations are saved here but the portal does not run them yet. Until that is switched on, assign courses and
-        deactivate accounts by hand.
+        Active automations run by themselves. Ones that follow an event (a course completed, a user created) act as it happens, or after the hours you
+        set. Ones that watch the clock (expiry, inactivity) are checked {backend.mode === 'server' ? 'every few minutes while the portal is in use and once a day otherwise' : 'every few minutes while the portal is open in this browser'}.{' '}
+        <button
+          type="button"
+          className="link"
+          disabled={checking}
+          onClick={async () => {
+            setChecking(true)
+            const res = await actions.runEngine()
+            setChecking(false)
+            toast(res.ok ? (res.changed ? 'Checked: due automations have run.' : 'Checked: nothing was due.') : res.error, res.ok ? 'success' : 'error')
+          }}
+        >
+          {checking ? 'Checking…' : 'Check now'}
+        </button>
       </SetupNote>
 
       <SearchInput value={query} onChange={setQuery} className="w-[250px] mb-5" />
@@ -202,6 +217,17 @@ export default function Automations() {
             label: 'Status',
             sortValue: (a) => (a.active ? 0 : 1),
             render: (a) => <Badge tone={a.active ? 'green' : 'gray'}>{a.active ? 'Active' : 'Paused'}</Badge>,
+          },
+          {
+            key: 'runs',
+            label: 'Has run',
+            sortValue: (a) => Number(a.runs) || 0,
+            render: (a) => (
+              <span title={a.lastRunAt ? `Last ran ${formatDateTime(a.lastRunAt)}` : undefined}>
+                {plural(Number(a.runs) || 0, 'time')}
+                {waiting(a) > 0 && <span className="text-ink-500"> · {waiting(a)} waiting</span>}
+              </span>
+            ),
           },
           { key: 'createdAt', label: 'Created', render: (a) => formatDate(a.createdAt) },
         ]}
@@ -300,13 +326,13 @@ export default function Automations() {
         )}
 
         {needs.includes('points') && (
-          <Field label="Points">
+          <Field label="Points" hint={settings.gamification?.enabled ? 'Added to the learner\'s total on their Achievements page.' : 'Gamification is switched off, so learners will not see these points until it is turned on in Account & Settings.'}>
             <Input type="number" min={1} value={draft.points} onChange={number('points', 1)} />
           </Field>
         )}
 
         {needs.includes('url') && (
-          <Field label="Web address" hint="The portal sends the user and course details to this address.">
+          <Field label="Web address" hint={`The portal sends the user, course and score to this address as JSON (a POST request).${backend.mode === 'server' ? '' : ' Without the shared database it is sent from the learner\'s browser, which some addresses refuse.'}`}>
             <Input value={draft.url} onChange={(e) => change({ url: e.target.value })} placeholder="https://" />
           </Field>
         )}

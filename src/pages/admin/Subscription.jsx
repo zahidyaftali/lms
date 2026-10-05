@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Badge, Button, EmptyState, Field, Icon, Input, PageHeader, Progress, Textarea } from '../../components/ui'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
-import { withSettingDefaults } from '../../lib/seed'
+import { withSettingDefaults } from '../../lib/settingsDefaults.js'
 
 /** Plan, usage and billing details for the portal. GA Healthcare owns its portal, so there is no plan to buy. */
 export default function Subscription() {
@@ -63,7 +63,7 @@ export default function Subscription() {
         <section className="card card-pad">
           <p className="text-[13px] font-semibold tracking-[0.12em] uppercase text-ink-700 mb-4">Hosting</p>
           <ul className="space-y-4 text-[14px]">
-            <Fact icon="globe" label="Address" value={settings.domain} />
+            <Fact icon="globe" label="Address" value={settings.customDomain || window.location.host} />
             <Fact
               icon="archive"
               label="Data"
@@ -77,7 +77,10 @@ export default function Subscription() {
 
       <section className="card card-pad mb-6">
         <h2 className="card-title mb-1.5">Limits</h2>
-        <p className="hint mb-5">Set a ceiling to be warned about on this page. 0 means no limit.</p>
+        <p className="hint mb-5">
+          A ceiling the portal holds itself to: once the active user limit is reached, new accounts are refused (sign-up) or added as inactive, and
+          an inactive account cannot be activated; once the active course limit is reached, no further course can be activated. 0 means no limit.
+        </p>
         <div className="grid sm:grid-cols-2 gap-x-5 max-w-2xl">
           <Field label="Active user limit">
             <Input type="number" min={0} value={draft.userLimit} onChange={limit('userLimit')} />
@@ -88,7 +91,7 @@ export default function Subscription() {
         </div>
 
         <h2 className="card-title mt-3 mb-1.5">Billing details</h2>
-        <p className="hint mb-5">Kept on file for when the portal issues invoices.</p>
+        <p className="hint mb-5">Your organization's own details, kept on file. What appears on learners' invoices is set in Account &amp; Settings → E-commerce → Invoices.</p>
         <div className="grid sm:grid-cols-2 gap-x-5 max-w-2xl">
           <Field label="Company name">
             <Input value={draft.company} onChange={(e) => change({ company: e.target.value })} />
@@ -131,7 +134,7 @@ export default function Subscription() {
         <div className="px-6 pt-6">
           <h2 className="card-title">Invoices</h2>
         </div>
-        <EmptyState icon="file" title="No invoices" message="This portal is not billed, so there is nothing to pay or download here." />
+        <EmptyState icon="file" title="No invoices" message="This portal is not billed, so there is nothing to pay or download here. Invoices for courses your learners buy are under Reports → Sales." />
       </section>
     </div>
   )
@@ -150,7 +153,7 @@ function Usage({ label, used, limit = 0, note }) {
       </div>
       {limit > 0 && <Progress value={(used / limit) * 100} tone={over ? 'brand' : 'green'} />}
       {over ? (
-        <p className="text-[13px] text-red-600 mt-1.5">Over the limit you set.</p>
+        <p className="text-[13px] text-red-600 mt-1.5">Over the limit you set. Nothing is switched off; new ones are refused until this is back under it.</p>
       ) : (
         note && <p className="hint mt-1.5">{note}</p>
       )}

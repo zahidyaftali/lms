@@ -16,16 +16,16 @@ import {
   Progress,
   SearchInput,
   Select,
-  SetupNote,
   Tabs,
   Textarea,
   Toggle,
 } from '../../components/ui'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
+import { PATH_RULES, pathProgress } from '../../lib/rules.js'
 import { formatDate, fullName, plural } from '../../lib/utils'
 
-const COMPLETION_RULES = ['All courses must be completed', 'Only the last course must be completed']
+const COMPLETION_RULES = PATH_RULES
 
 const empty = {
   name: '',
@@ -50,7 +50,8 @@ const TABS = [
 ]
 
 export default function LearningPaths() {
-  const { learningPaths = [], courses, users, categories, enrollments, actions } = useData()
+  const data = useData()
+  const { learningPaths = [], courses, users, categories, actions } = data
   const toast = useToast()
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null)
@@ -79,14 +80,23 @@ export default function LearningPaths() {
     }
     // Courses deleted since the path was built drop out of it here.
     const courseIds = draft.courseIds.filter(courseById)
-    const record = { ...draft, name: draft.name.trim(), courseIds, updatedAt: new Date().toISOString() }
+    const now = new Date().toISOString()
+    // The day each learner joined starts their time limit.
+    const joined = Object.fromEntries(draft.userIds.map((id) => [id, draft.joined?.[id] || now]))
+    const record = { ...draft, name: draft.name.trim(), courseIds, joined, updatedAt: now }
+    const saved = editing.id ? { ...editing, ...record } : actions.learningPaths.add(record)
     if (editing.id) actions.learningPaths.update(editing.id, record)
-    else actions.learningPaths.add(record)
     const assign = record.status === 'active' && record.userIds.length > 0 && courseIds.length > 0
-    if (assign) actions.enroll(record.userIds, courseIds)
+    if (assign) {
+      for (const userId of record.userIds) {
+        // In order: only the first course a learner has not completed opens; the rest follow as they finish.
+        const next = pathProgress(record, userId, data).next
+        actions.enroll([userId], record.ordered ? (next ? [next.courseId] : []) : courseIds, { pathId: saved.id })
+      }
+    }
     toast(
       assign
-        ? `${record.name} saved. ${plural(record.userIds.length, 'learner')} can open its ${plural(courseIds.length, 'course')}.`
+        ? `${record.name} saved. ${plural(record.userIds.length, 'learner')} can open ${record.ordered ? 'its first course' : `its ${plural(courseIds.length, 'course')}`}.`
         : `${record.name} saved.`,
     )
     setEditing(null)
@@ -102,13 +112,10 @@ export default function LearningPaths() {
 
   /** Share of the path's courses its learners have completed, as a percentage. */
   function progressOf(path) {
-    const ids = (path.courseIds || []).filter(courseById)
-    const members = path.userIds || []
-    if (!ids.length || !members.length) return 0
-    const done = enrollments.filter(
-      (e) => e.status === 'completed' && ids.includes(e.courseId) && members.includes(e.userId),
-    ).length
-    return Math.round((done / (ids.length * members.length)) * 100)
+    const members = (path.userIds || []).filter((id) => users.some((u) => u.id === id))
+    if (!members.length) return 0
+    const done = members.filter((id) => pathProgress(path, id, data).completed).length
+    return Math.round((done / members.length) * 100)
   }
 
   const rows = learningPaths.filter((p) => `${p.name} ${p.code || ''}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -166,7 +173,7 @@ export default function LearningPaths() {
           },
           {
             key: 'progress',
-            label: 'Completed',
+            label: 'Learners finished',
             width: 190,
             sortValue: progressOf,
             render: (p) => (
@@ -354,8 +361,8 @@ export default function LearningPaths() {
         {tab === 'learners' && (
           <>
             <p className="hint mb-4">
-              Learners added here are enrolled in every course of the path when you save. Removing someone keeps the
-              course access they already have.
+              Learners added here are enrolled in the path's courses when you save — all of them, or the first one when
+              courses are taken in order. Removing someone keeps the course access they already have.
             </p>
             <PickList
               items={users.filter((u) => u.active)}
@@ -371,15 +378,11 @@ export default function LearningPaths() {
 
         {tab === 'options' && (
           <div className="space-y-6">
-            <SetupNote>
-              These options are saved with the path. Learners are not held to them yet: for now a path enrolls its
-              learners in all of its courses at once.
-            </SetupNote>
             <Toggle
               checked={draft.ordered}
               onChange={(v) => change({ ordered: v })}
               label="Courses are taken in order"
-              hint="Each course opens once the one before it is completed."
+              hint="Each learner is enrolled in the first course; the next one is added the moment they complete the one before it. Off: they get every course at once."
             />
             <Field label="Completion rule" className="!mb-0">
               <Select value={draft.completionRule} onChange={(e) => change({ completionRule: e.target.value })}>
@@ -388,7 +391,7 @@ export default function LearningPaths() {
                 ))}
               </Select>
             </Field>
-            <Field label="Time limit (days)" hint="Days a learner has to finish the path. 0 means no limit." className="!mb-0">
+            <Field label="Time limit (days)" hint="Days a learner has to finish the path, from the day they join. After that the path shows as out of time and no further courses open. 0 means no limit." className="!mb-0">
               <Input
                 type="number"
                 min={0}
@@ -400,12 +403,13 @@ export default function LearningPaths() {
               checked={draft.certificate}
               onChange={(v) => change({ certificate: v })}
               label="Issue a certificate when the path is completed"
+              hint="In addition to the certificates of its courses. It uses the default certificate template."
             />
             <Toggle
               checked={draft.selfEnroll}
               onChange={(v) => change({ selfEnroll: v })}
               label="Learners can join this path on their own"
-              hint="The path appears in the course catalog."
+              hint="The path appears at the top of the course catalog with a Join button."
             />
           </div>
         )}

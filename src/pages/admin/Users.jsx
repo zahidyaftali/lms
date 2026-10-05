@@ -29,9 +29,11 @@ import {
   CredentialsDialog,
   PasswordField,
   SetPasswordDialog,
+  passwordHint,
   passwordProblem,
-  usePasswordMinLength,
+  usePasswordPolicy,
 } from '../../components/users/AccountDialogs'
+import CustomFieldInputs, { customFieldErrors } from '../../components/users/CustomFieldInputs'
 import { copyText, formatDate, fullName, randomPassword, shortName, timeAgo, toCSV, download } from '../../lib/utils'
 
 const emptyDraft = () => ({
@@ -47,15 +49,28 @@ const emptyDraft = () => ({
   phone: '',
   active: true,
   notify: true,
+  custom: {},
+  credits: 0,
 })
 
 export default function Users() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
-  const { users, userTypes, branches, groups, courses, settings, actions } = useData()
+  const { users, userTypes, branches, groups, courses, settings, backend, actions } = useData()
   const { user: me } = useAuth()
   const toast = useToast()
-  const minLength = usePasswordMinLength()
+  const policy = usePasswordPolicy()
+  const minLength = policy.minLength
+  const server = backend.mode === 'server'
+  const customFields = settings.users?.customFields || []
+  // Locked accounts and who has two-factor on: the server keeps these, so they are asked for.
+  const [security, setSecurity] = useState({})
+  const loadSecurity = () => {
+    if (server) actions.rpc('accounts.security', {}, { refresh: false }).then((res) => res.ok && setSecurity(res.accounts || {}))
+  }
+  useEffect(loadSecurity, [server]) // eslint-disable-line react-hooks/exhaustive-deps
+  const userLimit = Number(settings.subscription?.userLimit) || 0
+  const activeCount = users.filter((u) => u.active).length
 
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState({ type: '', status: '', branch: '', group: '' })
@@ -99,14 +114,15 @@ export default function Users() {
 
   function openCreate() {
     setEditing(null)
-    setDraft({ ...emptyDraft(), userType: settings.users?.defaultUserType || 'Learner-Type' })
+    const group = groups.find((g) => g.id === settings.users?.defaultGroupId)
+    setDraft({ ...emptyDraft(), userType: settings.users?.defaultUserType || 'Learner-Type', groupIds: group ? [group.id] : [] })
     setErrors({})
     setFormOpen(true)
   }
 
   function openEdit(u) {
     setEditing(u)
-    setDraft({ ...emptyDraft(), ...u, password: '', newPassword: '', notify: false })
+    setDraft({ ...emptyDraft(), ...u, custom: u.custom || {}, credits: Number(u.credits) || 0, password: '', newPassword: '', notify: false })
     setErrors({})
     setFormOpen(true)
   }
@@ -119,12 +135,16 @@ export default function Users() {
     else if (users.some((u) => u.email.toLowerCase() === draft.email.toLowerCase() && u.id !== editing?.id))
       next.email = 'Another account already uses this email.'
     if (!editing) {
-      const problem = passwordProblem(draft.password, minLength)
+      const problem = passwordProblem(draft.password, policy)
       if (problem) next.password = problem
     } else if (draft.newPassword) {
-      const problem = passwordProblem(draft.newPassword, minLength)
+      const problem = passwordProblem(draft.newPassword, policy)
       if (problem) next.newPassword = problem
     }
+    Object.assign(next, customFieldErrors(customFields, draft.custom))
+    const activating = draft.active && !(editing && editing.active)
+    if (activating && userLimit > 0 && activeCount >= userLimit)
+      next.active = `The active user limit of ${userLimit} (Subscription page) has been reached. Deactivate an account or raise the limit.`
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -143,6 +163,10 @@ export default function Users() {
       bio: draft.bio,
       phone: draft.phone,
       active: draft.active,
+      custom: draft.custom,
+      credits: Math.max(0, Number(draft.credits) || 0),
+      // An account activated by hand is no longer waiting for anything.
+      ...(draft.active ? { pending: null } : {}),
     }
 
     if (editing) {
@@ -174,7 +198,7 @@ export default function Users() {
       const [firstName, lastName, email, type = 'Learner-Type', given = ''] = line.split(',').map((x) => (x || '').trim())
       if (!email || taken.has(email.toLowerCase())) return
       const role = userTypes.find((t) => t.name === type)?.role || 'learner'
-      const password = given && !passwordProblem(given, minLength) ? given : randomPassword()
+      const password = given && !passwordProblem(given, policy) ? given : randomPassword()
       const user = actions.addUser({ firstName, lastName, email, userType: type, role, password, active: true })
       taken.add(email.toLowerCase())
       created.push({ user, password })
@@ -195,7 +219,9 @@ export default function Users() {
           <button className="link font-normal" onClick={() => navigate(`/users/${u.id}`)}>
             {shortName(u)}
           </button>
-          {!u.active && <Badge>Inactive</Badge>}
+          {!u.active && <Badge tone={u.pending ? 'amber' : 'gray'}>{u.pending === 'email' ? 'Email not confirmed' : u.pending ? 'Awaiting activation' : 'Inactive'}</Badge>}
+          {security[u.id]?.locked && <Badge tone="red">Locked</Badge>}
+          {security[u.id]?.twoFactor && <Badge tone="blue">2FA</Badge>}
         </div>
       ),
     },
@@ -279,7 +305,7 @@ export default function Users() {
               variant="ghost"
               icon="check"
               onClick={() => {
-                selected.forEach((id) => actions.updateUser(id, { active: true }))
+                selected.forEach((id) => actions.updateUser(id, { active: true, pending: null }))
                 toast('Selected users activated.')
                 setSelected([])
               }}
@@ -362,12 +388,37 @@ export default function Users() {
             <MenuItem
               icon={u.active ? 'lock' : 'check'}
               onClick={() => {
-                actions.updateUser(u.id, { active: !u.active })
+                if (!u.active && userLimit > 0 && activeCount >= userLimit) return toast(`The active user limit of ${userLimit} (Subscription page) has been reached.`, 'error')
+                actions.updateUser(u.id, u.active ? { active: false } : { active: true, pending: null })
                 toast(`${shortName(u)} ${u.active ? 'deactivated' : 'activated'}.`)
               }}
             >
               {u.active ? 'Deactivate' : 'Activate'}
             </MenuItem>
+            {security[u.id]?.locked && (
+              <MenuItem
+                icon="check"
+                onClick={async () => {
+                  await actions.rpc('account.unlock', { userId: u.id }, { refresh: false })
+                  loadSecurity()
+                  toast(`${shortName(u)} can sign in again.`)
+                }}
+              >
+                Unlock account
+              </MenuItem>
+            )}
+            {security[u.id]?.twoFactor && (
+              <MenuItem
+                icon="shield"
+                onClick={async () => {
+                  await actions.rpc('twofactor.reset', { userId: u.id }, { refresh: false })
+                  loadSecurity()
+                  toast(`Two-factor reset for ${shortName(u)}. They set it up again at their next sign-in.`)
+                }}
+              >
+                Reset two-factor
+              </MenuItem>
+            )}
             <MenuDivider />
             <MenuItem
               icon="trash"
@@ -408,7 +459,9 @@ export default function Users() {
         subtitle={
           editing
             ? 'Update the account details and access level.'
-            : 'The portal has no public sign-up — every account is created here.'
+            : settings.users?.selfRegistration
+              ? 'People can also sign up themselves from the sign-in page.'
+              : 'The portal has no public sign-up — every account is created here.'
         }
         footer={
           <>
@@ -450,7 +503,7 @@ export default function Users() {
           ) : (
             <PasswordField
               required
-              hint={`At least ${minLength} characters. This is exactly what the user types to sign in.`}
+              hint={`${passwordHint(policy)} This is exactly what the user types to sign in.`}
               value={draft.password}
               onChange={(v) => setDraft({ ...draft, password: v })}
               error={errors.password}
@@ -504,6 +557,14 @@ export default function Users() {
             <Textarea value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} rows={3} />
           </Field>
 
+          <CustomFieldInputs fields={customFields} values={draft.custom} onChange={(custom) => setDraft({ ...draft, custom })} errors={errors} />
+
+          {settings.ecommerce?.credits && (
+            <Field label="Credits" hint="Spent on paid courses instead of paying. One credit is one unit of the portal currency.">
+              <Input type="number" min={0} value={draft.credits} onChange={(e) => setDraft({ ...draft, credits: e.target.value })} />
+            </Field>
+          )}
+
           <div className="sm:col-span-2 space-y-4">
             <Toggle
               checked={draft.active}
@@ -511,6 +572,7 @@ export default function Users() {
               label="Account is active"
               hint="Inactive accounts cannot sign in."
             />
+            {errors.active && <p className="text-[12.5px] text-red-600">{errors.active}</p>}
             {!editing && (
               <Toggle
                 checked={draft.notify}
@@ -612,7 +674,7 @@ export default function Users() {
       >
         <Field
           label="Paste your list"
-          hint={`Leave the password out (or shorter than ${minLength} characters) and one is generated. Every account's login details are listed after the import.`}
+          hint={`Leave the password out (or use one that breaks the password rules) and one is generated. Every account's login details are listed after the import.`}
         >
           <Textarea
             rows={8}

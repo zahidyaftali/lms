@@ -235,8 +235,10 @@ export function applyPlan(state, plan) {
   return next
 }
 
+/** What is stored never includes `privateBody`: the text of an email that holds a password. */
+const storable = ({ privateBody, ...rest }) => rest
 const opsRows = (ops) =>
-  Object.entries(ops.upserts).flatMap(([collection, records]) => records.map((r) => ({ collection, id: r.id, data: r })))
+  Object.entries(ops.upserts).flatMap(([collection, records]) => records.map((r) => ({ collection, id: r.id, data: storable(r) })))
 const opsKeys = (ops) => Object.entries(ops.deletes).flatMap(([collection, ids]) => ids.map((id) => ({ collection, id })))
 
 /** Sends the emails and webhooks a change set off, and records how each email went. */
@@ -246,9 +248,9 @@ export async function deliver(store, settings, { mails = [], hooks = [] }) {
   const at = new Date().toISOString()
   const results = await Promise.all(
     mails.slice(0, 25).map(async (m) => {
-      const r = await sendEmail(settings, secrets, m)
+      const r = await sendEmail(settings, secrets, { ...m, body: m.privateBody || m.body })
       const status = r.ok ? 'sent' : r.skipped ? 'skipped' : 'failed'
-      return { collection: 'outbox', id: m.id, data: { ...m, status, error: r.ok ? '' : r.error, sentAt: r.ok ? at : null } }
+      return { collection: 'outbox', id: m.id, data: { ...storable(m), status, error: r.ok ? '' : r.error, sentAt: r.ok ? at : null } }
     }),
   )
   await store.upsert(results)

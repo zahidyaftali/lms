@@ -2,20 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { Button, Field, Icon, Modal } from '../ui'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
+import { passwordHint, passwordPolicy, passwordProblem } from '../../lib/rules.js'
 import { copyText, fullName, randomPassword } from '../../lib/utils'
 
-/** Returns an error message, or null when the password can be saved as typed. */
-export function passwordProblem(password, minLength = 8) {
-  if (!password) return 'Type a password or click Generate.'
-  if (password !== password.trim()) return 'Remove the spaces at the start or end of the password.'
-  if (password.length < minLength) return `Use at least ${minLength} characters.`
-  return null
+/** The rules a new password must meet, from Account & Settings (minimum length, strong passwords). */
+export function usePasswordPolicy() {
+  const { settings } = useData()
+  return passwordPolicy(settings)
 }
 
-export function usePasswordMinLength() {
-  const { settings } = useData()
-  return Math.max(4, Number(settings?.users?.passwordMinLength) || 8)
-}
+export const usePasswordMinLength = () => usePasswordPolicy().minLength
+
+export { passwordProblem, passwordHint }
 
 /**
  * The password box used wherever an administrator sets a password. It starts
@@ -121,7 +119,7 @@ function Row({ label, value }) {
 
 /** Lets an administrator choose (or generate) a new password for an existing account. */
 export function SetPasswordDialog({ open, user, onClose, onSave }) {
-  const minLength = usePasswordMinLength()
+  const policy = usePasswordPolicy()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const wasOpen = useRef(false)
@@ -135,7 +133,7 @@ export function SetPasswordDialog({ open, user, onClose, onSave }) {
   }, [open])
 
   function save() {
-    const problem = passwordProblem(password, minLength)
+    const problem = passwordProblem(password, policy)
     if (problem) return setError(problem)
     onSave(password)
   }
@@ -158,7 +156,7 @@ export function SetPasswordDialog({ open, user, onClose, onSave }) {
     >
       <PasswordField
         label="New password"
-        hint={`At least ${minLength} characters. The old password stops working straight away.`}
+        hint={`${passwordHint(policy)} The old password stops working straight away.`}
         value={password}
         onChange={(v) => {
           setPassword(v)

@@ -10,26 +10,35 @@ import {
   Tabs,
   Textarea,
 } from '../../components/ui'
+import InvoiceDialog, { OrderStatus, PAYMENT_METHOD, orderAmount } from '../../components/course/Invoice'
+import { customFieldText } from '../../components/users/CustomFieldInputs'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { isAdmin } from '../../lib/permissions'
 import { useToast } from '../../context/ToastContext'
 import { shrinkImage } from '../../lib/fileStore'
+import { hasSubscription } from '../../lib/commerce.js'
+import { passwordHint, passwordPolicy, passwordProblem, statusLabel } from '../../lib/rules.js'
 import { duration, formatDate, fullName } from '../../lib/utils'
-import { passwordProblem } from '../../components/users/AccountDialogs'
+import { useT } from '../../lib/i18n'
 
 export default function Profile() {
-  const { branches, groups, certificates, actions, settings } = useData()
+  const { branches, groups, certificates, orders = [], actions, settings, server, backend } = useData()
   const { enrollmentsOf, progressOf, courseById } = useSelectors()
   const { user } = useAuth()
   const toast = useToast()
+  const t = useT()
   const [tab, setTab] = useState('details')
   const [draft, setDraft] = useState(user)
   const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' })
   const [error, setError] = useState('')
+  const [invoice, setInvoice] = useState(null)
+  const policy = passwordPolicy(settings)
 
   const enrollments = enrollmentsOf(user.id)
   const branch = branches.find((b) => b.id === user.branchId)
+  const myOrders = orders.filter((o) => o.userId === user.id).sort((a, b) => (a.at < b.at ? 1 : -1))
+  const customFields = settings.users?.customFields || []
 
   function saveDetails() {
     actions.updateUser(user.id, {
@@ -39,12 +48,12 @@ export default function Profile() {
       bio: draft.bio,
       avatar: draft.avatar,
     })
-    toast('Profile updated.')
+    toast(t('Profile updated.'))
   }
 
   async function changePassword() {
     setError('')
-    const problem = passwordProblem(passwords.next, settings.users.passwordMinLength || 8)
+    const problem = passwordProblem(passwords.next, policy)
     if (problem) return setError(problem)
     if (passwords.next !== passwords.confirm) return setError('The new passwords do not match.')
     const result = await actions.changePassword(user.id, passwords.current, passwords.next)
@@ -55,7 +64,7 @@ export default function Profile() {
 
   return (
     <div>
-      <PageHeader title="My profile" subtitle="Your account details and training record." />
+      <PageHeader title={t('My profile')} subtitle={t('Your account details and training record.')} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
         <aside className="card card-pad text-center">
@@ -83,14 +92,21 @@ export default function Profile() {
           </Badge>
 
           <dl className="mt-6 pt-5 border-t border-line space-y-3.5 text-left text-[13.5px]">
-            <Row label="Branch" value={branch?.name || '-'} />
+            <Row label={t('Branch')} value={branch?.name || '-'} />
             <Row
-              label="Groups"
+              label={t('Groups')}
               value={(user.groupIds || []).map((id) => groups.find((g) => g.id === id)?.name).filter(Boolean).join(', ') || '-'}
             />
-            <Row label="Member since" value={formatDate(user.registeredAt)} />
-            <Row label="Courses" value={enrollments.length} />
-            <Row label="Training time" value={duration(enrollments.reduce((s, e) => s + (e.timeSpentMin || 0), 0))} />
+            <Row label={t('Member since')} value={formatDate(user.registeredAt)} />
+            <Row label={t('Courses')} value={enrollments.length} />
+            <Row label={t('Training time')} value={duration(enrollments.reduce((s, e) => s + (e.timeSpentMin || 0), 0))} />
+            {settings.ecommerce?.credits && <Row label={t('Credits')} value={Number(user.credits) || 0} />}
+            {hasSubscription(user) && <Row label={t('Subscription')} value={`${t('until')} ${formatDate(user.subscribedUntil)}`} />}
+            {customFields.map((f) => {
+              const value = customFieldText(f, user.custom?.[f.id])
+              return value ? <Row key={f.id} label={f.name} value={value} /> : null
+            })}
+            {backend.mode === 'server' && server?.twoFactor && <Row label={t('Two-factor')} value={t('On')} />}
           </dl>
         </aside>
 
@@ -98,10 +114,11 @@ export default function Profile() {
           <div className="px-6 pt-5">
             <Tabs
               tabs={[
-                { value: 'details', label: 'Details' },
+                { value: 'details', label: t('Details') },
                 // Learners and instructors ask an administrator for a new password.
                 ...(isAdmin(user) ? [{ value: 'security', label: 'Password' }] : []),
-                { value: 'training', label: 'Training record', count: enrollments.length },
+                { value: 'training', label: t('Training record'), count: enrollments.length },
+                ...(myOrders.length ? [{ value: 'orders', label: t('Purchases'), count: myOrders.length }] : []),
               ]}
               active={tab}
               onChange={setTab}
@@ -112,23 +129,23 @@ export default function Profile() {
             {tab === 'details' && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
-                  <Field label="First name">
+                  <Field label={t('First name')}>
                     <Input value={draft.firstName} onChange={(e) => setDraft({ ...draft, firstName: e.target.value })} />
                   </Field>
-                  <Field label="Last name">
+                  <Field label={t('Last name')}>
                     <Input value={draft.lastName} onChange={(e) => setDraft({ ...draft, lastName: e.target.value })} />
                   </Field>
-                  <Field label="Email" hint="Contact the program office to change your email address." className="sm:col-span-2">
+                  <Field label={t('Email')} hint={t('Contact the program office to change your email address.')} className="sm:col-span-2">
                     <Input value={draft.email} disabled className="bg-gray-50 text-ink-500" />
                   </Field>
-                  <Field label="Phone" className="sm:col-span-2">
+                  <Field label={t('Phone')} className="sm:col-span-2">
                     <Input value={draft.phone || ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
                   </Field>
-                  <Field label="About me" className="sm:col-span-2">
+                  <Field label={t('About me')} className="sm:col-span-2">
                     <Textarea rows={4} value={draft.bio || ''} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} />
                   </Field>
                 </div>
-                <Button onClick={saveDetails}>Save changes</Button>
+                <Button onClick={saveDetails}>{t('Save changes')}</Button>
               </>
             )}
 
@@ -141,7 +158,7 @@ export default function Profile() {
                     onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
                   />
                 </Field>
-                <Field label="New password" hint={`At least ${settings.users.passwordMinLength || 8} characters.`}>
+                <Field label="New password" hint={passwordHint(policy)}>
                   <Input
                     type="password"
                     value={passwords.next}
@@ -161,7 +178,7 @@ export default function Profile() {
 
             {tab === 'training' && (
               <ul className="divide-y divide-line">
-                {enrollments.length === 0 && <p className="hint">No courses assigned yet.</p>}
+                {enrollments.length === 0 && <p className="hint">{t('No courses assigned yet.')}</p>}
                 {enrollments.map((e) => {
                   const course = courseById(e.courseId)
                   const certificate = certificates.find((c) => c.userId === user.id && c.courseId === e.courseId)
@@ -173,18 +190,50 @@ export default function Profile() {
                       <span className="flex-1 min-w-0">
                         <span className="block text-[14.5px] truncate">{course?.name}</span>
                         <span className="block hint">
-                          Enrolled {formatDate(e.enrolledAt)} · {progressOf(e)}% complete
+                          {t('Enrolled')} {formatDate(e.enrolledAt)} · {t(statusLabel(e.status))} · {progressOf(e)}%
+                          {e.score != null ? ` · ${t('score')} ${e.score}%` : ''}
                         </span>
                       </span>
-                      {certificate && <Badge tone="green">Certificate {certificate.code}</Badge>}
+                      {certificate && <Badge tone="green">{certificate.code}</Badge>}
                     </li>
                   )
                 })}
               </ul>
             )}
+
+            {tab === 'orders' && (
+              <ul className="divide-y divide-line">
+                {myOrders.map((o) => (
+                  <li key={o.id} className="py-4 flex flex-wrap items-center gap-4">
+                    <span className="w-9 h-9 rounded-md bg-brand-50 text-brand-700 flex items-center justify-center shrink-0">
+                      <Icon name="cart" className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                    </span>
+                    <span className="flex-1 min-w-[160px]">
+                      <span className="block text-[14.5px]">{o.name}</span>
+                      <span className="block hint">
+                        {formatDate(o.at)} · {orderAmount(o)} · {PAYMENT_METHOD[o.method] || o.method}
+                      </span>
+                    </span>
+                    <OrderStatus order={o} />
+                    {o.status === 'paid' && Number(o.amount) > 0 && (
+                      <Button size="sm" variant="ghost" onClick={() => setInvoice(o)}>
+                        {o.invoiceNo ? t('Invoice') : t('Receipt')}
+                      </Button>
+                    )}
+                    {o.status === 'pending' && (
+                      <Button size="sm" variant="ghost" onClick={() => actions.cancelOrder(o.id)}>
+                        {t('Cancel')}
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
       </div>
+
+      <InvoiceDialog order={invoice} buyer={user} onClose={() => setInvoice(null)} />
     </div>
   )
 }

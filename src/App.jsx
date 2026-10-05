@@ -131,6 +131,8 @@ export default function App() {
         <Route path="/verify" element={<VerifyCertificate />} />
         <Route path="/verify/:code" element={<VerifyCertificate />} />
         <Route path="/explore" element={<PublicCatalog />} />
+        {/* The custom homepage, whoever is looking: lets an administrator preview it while signed in. */}
+        <Route path="/welcome" element={<PublicHome />} />
 
         {/* Courses with public sharing on; no account needed. */}
         <Route path="/share/:courseId" element={<PublicCourse />} />
