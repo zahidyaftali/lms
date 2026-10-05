@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ActivityChart, DonutChart, MiniBars } from '../../components/charts/Charts'
-import { Badge, Button, DataTable, EmptyState, MenuItem, PageHeader, Progress, SearchInput, Select, Tabs, Icon } from '../../components/ui'
+import { Button, DataTable, EmptyState, MenuItem, PageHeader, Progress, SearchInput, Select, Tabs, Icon } from '../../components/ui'
 import InvoiceDialog, { OrderStatus, PAYMENT_METHOD, orderAmount } from '../../components/course/Invoice'
 import { useToast } from '../../context/ToastContext'
 import { useData, useSelectors } from '../../context/DataContext'

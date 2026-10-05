@@ -185,6 +185,15 @@ export async function copyText(text) {
   return ok
 }
 
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
+
+/** Course descriptions copied from TalentLMS carry HTML entities (&amp;); this writes them as plain text. */
+export function plainText(value) {
+  return String(value || '')
+    .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (whole, name) => ENTITIES[name])
+    .replace(/&#(\d+);/g, (whole, code) => String.fromCharCode(Number(code)))
+}
+
 export const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 export function daysAgo(n) {

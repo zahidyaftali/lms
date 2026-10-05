@@ -25,6 +25,8 @@ const USER_FIELDS = {
   phone: 'phone',
   bio: 'bio',
   avatar: 'photo',
+  custom: 'custom fields',
+  credits: 'credits',
 }
 
 const COURSE_FIELDS = {
@@ -50,11 +52,13 @@ const COURSE_FIELDS = {
   certificateType: 'certificate type',
   completionRule: 'completion rule',
   introVideo: 'intro video',
+  custom: 'custom fields',
 }
 
 const SETTINGS_FIELDS = {
   siteName: 'site name',
   siteDescription: 'site description',
+  customDomain: 'custom domain',
   logo: 'logo',
   favicon: 'favicon',
   theme: 'theme',
@@ -75,6 +79,8 @@ const SETTINGS_FIELDS = {
   gamification: 'gamification settings',
   ecommerce: 'e-commerce settings',
   integrations: 'integrations',
+  email: 'email service',
+  webhooks: 'webhooks',
   api: 'API access',
   security: 'security settings',
   subscription: 'billing details',

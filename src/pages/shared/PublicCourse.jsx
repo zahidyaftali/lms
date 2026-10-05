@@ -53,7 +53,7 @@ export default function PublicCourse() {
     if (!needsFetch) return undefined
     let active = true
     api
-      .get(`public-course?id=${encodeURIComponent(courseId)}`)
+      .get(`public?course=${encodeURIComponent(courseId)}`)
       .then((r) => active && setRemote(r.course))
       .catch(() => active && setRemote(null))
     return () => {

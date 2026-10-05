@@ -3,7 +3,7 @@ import { Icon } from '../ui'
 import CourseHero from './CourseHero'
 import { hasIntroVideo } from './IntroVideo'
 import { contentUnits } from '../../lib/rules.js'
-import { copyText, cx, formatDate, plural } from '../../lib/utils'
+import { copyText, cx, formatDate, plainText, plural } from '../../lib/utils'
 
 /** Average rating and number of ratings for one course. */
 export function ratingOf(ratings = [], courseId) {
@@ -83,7 +83,7 @@ export default function CatalogCourse({ course, layout = 'Cards', rating, priceL
           {rating.average.toFixed(1)} ({rating.count})
         </p>
       )}
-      <p className={cx('hint mb-4', list ? 'line-clamp-2' : 'line-clamp-3')}>{course.description}</p>
+      <p className={cx('hint mb-4', list ? 'line-clamp-2' : 'line-clamp-3')}>{plainText(course.description)}</p>
       {course.timeMode === 'timeframe' && (course.startDate || course.endDate) && (
         <p className="hint -mt-2 mb-4 flex items-center gap-1.5">
           <Icon name="calendar" className="w-4 h-4 shrink-0" />

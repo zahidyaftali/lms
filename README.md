@@ -1,14 +1,13 @@
 # GA Healthcare Training — Learning Portal
 
-A React + Tailwind LMS built for [GA Healthcare Training & Consulting](https://gahealthcaretraining.com/).
-Single-tenant: there is no plan to buy, no marketplace billing and no public sign-up — **every account is
-created by an administrator** and the login details are handed to the student.
+A React + Tailwind LMS built for [GA Healthcare Training & Consulting](https://gahealthcaretraining.com/),
+modelled on the school's TalentLMS portal. Single-tenant: the school owns its portal, so there is no plan to buy.
 
 ## Running it
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # http://localhost:5173, with the API and a local database file
 npm run build    # production bundle in dist/
 ```
 
@@ -27,28 +26,40 @@ students use the portal: this repository is public.
 
 Administrators can preview the portal as an instructor or learner from the avatar menu ("Switch role").
 
-### Accounts and passwords
+## Two ways the portal stores its data
 
-Only administrators create accounts (Users → Add user, or Import user(s)); there is no sign-up page.
+| | Shared database connected | No database (browser only) |
+| --- | --- | --- |
+| Where data lives | Postgres, through the API in `server/` | `localStorage` of each browser |
+| Accounts work on any device | Yes | No: each browser has its own copy |
+| Who enforces the rules | The server | The browser |
 
-- The password box starts empty and saves exactly what is typed. Generate fills in a random one. The
-  Login details window and its Copy button show that same password.
-- Edit user → New password, or Set new password on the user's page, replaces a password. The old one stops
-  working immediately.
-- Imports take an optional fifth column, Password. Accounts without one get a generated password, and every
-  new account's details are listed once after the import, with a CSV download.
-- Passwords must be at least the minimum length in Account & Settings → Users (8 by default) and cannot
-  start or end with a space.
-- Only administrators change passwords. Learners and instructors have no Password tab and there is no
-  "Forgot password" link; they ask the program office.
+**The live site needs the database to be useful to a school.** Without it a student on their own phone cannot
+sign in to an account an administrator created on another computer. See [Shared database](#shared-database).
 
-### History
+Everything on this list needs the server, and so the database. Each setting says so on its page until then:
 
-**Account & Settings → History** (administrators only) lists who created, edited or deleted users and
-courses, who set whose password, and who changed portal settings, with the details of each edit. With the
-shared database the server writes every entry itself, naming the signed-in user; passwords are never
-recorded. Repeated edits of the same thing by the same person within ten minutes are grouped into one line,
-and the latest 2,000 entries are kept. Export downloads the filtered list as CSV.
+- Two-factor authentication, one session at a time, allowed IP addresses
+- Email (welcome messages, notifications, sign-up confirmation, invoices)
+- Card payments, the REST API, webhooks, BambooHR import, Zoom and BigBlueButton rooms
+- Sign in with Google / Facebook / LinkedIn or an organization account (OpenID Connect)
+- Uploaded files that every device can open
+
+Everything else works in both: the same rules run in the browser when there is no server
+(`src/lib/rules.js`, `engine.js`, `commerce.js`, `gamification.js` are shared by both sides).
+
+## Accounts and passwords
+
+- Administrators create accounts (Users → Add user, or Import user(s)). With **Self-registration** on
+  (Account & Settings → Users) the sign-in page also offers "Create an account"; people who sign up are
+  always learners, can be limited to email domains, and can be held for a CAPTCHA question, an email
+  confirmation or an administrator's activation.
+- The password box starts empty and saves exactly what is typed. Generate fills in a random one.
+- Administrators set and change passwords. Everyone else chooses their own only when the portal asks them
+  to: **New password at first sign-in**, or **Passwords expire after** (both under Security).
+- Password rules (minimum length, strong passwords) are checked on the form and again on the server.
+- A wrong password counts towards **Failed login attempts before lockout**; an administrator can unlock an
+  account from the Users page.
 
 ## Access levels
 
@@ -57,56 +68,97 @@ and the latest 2,000 entries are kept. Export downloads the filtered list as CSV
 | Dashboard | Portal-wide | Own courses | Own progress |
 | Users | Create, edit, deactivate, delete, import/export | Sees own learners only | — |
 | Courses | Full authoring on every course | Authoring on assigned courses | Takes assigned courses |
-| Course store | Add ready-made outlines | — | — |
-| Learning paths / Automations / Skills | Full | — | — |
+| Learning paths / Automations / Skills | Full | — | Own paths, skills, achievements |
 | Groups / Branches / Notifications | Full | — | — |
-| Reports | Portal-wide + activity log | Own courses | — |
+| Reports | Portal-wide, activity log, sales | Own courses | — |
 | Grading | Yes | Yes | — |
 | Account & Settings / Subscription | Yes | — | — |
 | Profile, messages, certificates | Yes | Yes | Yes |
 
-Routes are guarded on both the navigation and the router, so a learner who types `/users` is returned to
-their own home page.
+Routes are guarded on both the navigation and the router, and every change is checked again on the server
+(`server/access.js`).
 
-## Learning paths, automations, skills and subscription
+## What the portal does by itself
 
-The administrator menu follows the TalentLMS layout: Home, Users, Courses, Learning paths, Course store,
-Groups, Branches, Automations, Notifications, Reports, Skills, Account & Settings, Subscription.
+`src/lib/engine.js` looks at each change and does what follows from it. With the database the server runs it
+after every accepted change, and on a timer (`/api/cron` daily, and at most every ten minutes while someone is
+using the portal). Without one the browser runs it.
 
-- **Learning paths** — an ordered list of courses with its own learners. Saving an active path enrolls its
-  learners in every course of the path. The Options tab (take courses in order, completion rule, time limit,
-  certificate, self-join) is stored but not enforced yet.
-- **Automations** — rules such as "24 hours after course X is completed, assign courses Y" or "deactivate
-  users who have not signed in for 90 days". Rules are stored; **nothing runs them yet**, and the page says so.
-- **Skills** — skills with a description, the courses that teach them, outside resources and the users who
-  have them. Administrators only for now; learners do not see skills.
-- **Subscription** — the portal's usage (active users, courses, branches, groups), optional limits to be
-  warned about, hosting details and billing details. The portal is not billed, so there are no invoices.
+- **Certificates** are issued when a course is completed, using the course's template.
+- **Learning paths** — taken in order (the next course opens as the previous one is completed) or all at
+  once; completion rule; time limit from the day a learner joins; an optional certificate for the whole
+  path; learners can join from the catalog when a path allows it.
+- **Automations** — assign courses after assignment / completion / a score range / failure / user creation,
+  before a course expires, reset and reassign around certificate expiry, deactivate users, give points, call
+  a web address. Delayed ones are queued and run when due.
+- **Notifications** — each active rule puts a message in the recipient's portal inbox and, with an email
+  service connected, emails it. Notifications → Sent lists every email and what became of it.
+- **Webhooks** — portal events are posted as JSON to the addresses under Integrations.
+- **Inactivity** — learners and instructors idle for the number of days under Users are deactivated;
+  administrators never are.
 
 ## Account & Settings
 
-| Tab | What it holds |
+Every option acts. The settings that reach outside the portal need the service's own credentials.
+
+| Tab | What it does |
 | --- | --- |
-| Portal | Identity, logo, **favicon**, theme, contact, locale, **announcements**, custom homepage |
-| Users | Registration defaults, sign-up rules, terms of service, social sign-in, single sign-on, custom user fields, passwords & inactivity |
-| User types, Categories | As before |
-| Courses | Course defaults, learning experience, catalog, certificates, custom course fields |
-| Skills | Skills on/off, learner options, assessment rules |
-| Gamification | Points, badges, levels, rewards, leaderboard |
-| E-commerce | Payment processor, currency, subscription, discounts, coupons, credits, invoices |
-| Integrations | Zoom, Microsoft Teams, GoTo Meeting, BigBlueButton, BambooHR, Salesforce, Zapier, Shopify, WooCommerce, API |
-| Security | Two-factor, session timeout, lockout, audit log, password policy, sessions and allowed IPs |
-| Import-Export, History | As before |
+| Portal | Site name and description (browser tab, search results), custom domain (printed on certificates), logo, favicon, **theme** (four colour schemes), **language** (English, Spanish, French for the menu, sign-in and learner pages), **time zone**, **date format**, **currency**, announcements, **custom homepage** for visitors |
+| Users | Self-registration and its rules, default user type and **default group**, welcome email, **visible name format**, **terms of service** (accepted at first sign-in and whenever the text changes), social sign-in, single sign-on (OpenID Connect), **custom user fields**, minimum password length, deactivation after inactivity |
+| User types, Categories | As before; renaming a type or changing its access level updates its accounts |
+| Courses | Default completion rule, progress bar, self-enrollment, **units in order**, **summary page**, **discussions**, **ratings**, **external catalog** (`/explore`), catalog layout, social sharing, certificates on/off, **certificate validity**, default template, **custom course fields** |
+| Skills | Skills for learners, suggestions, levels, and the assessment rules (questions, pass mark, retry, expiry) |
+| Gamification | Points, badges, levels, rewards (a discount at checkout) and the leaderboard — all worked out from what learners have done, so changing a rule re-scores everyone |
+| E-commerce | Stripe, PayPal, paying the program office, subscription, global discount, coupons, credits, invoices |
+| Integrations | Email service, video conferencing, BambooHR, webhooks, REST API and its keys |
+| Security | Two-factor (authenticator app), session timeout, lockout, audit log, strong passwords, password expiry, new password at first sign-in, one session at a time, allowed IP addresses |
+| Import-Export, History | Backup and restore; who changed what |
 
-Live today: the favicon (browser tab icon), the internal announcement (a bar above every page for signed-in
-users) and the external announcement (on the sign-in page), alongside everything that already worked.
-Skills, Gamification, E-commerce, Integrations and the options marked "Saved for later" store their values
-and are **not acted on yet**; each says so on the page. Saving writes only the settings that were edited, so
-History names what really changed.
+Settings saved by an earlier version of the portal held placeholder values that were never acted on. The
+ones that would have locked learners out the moment they started working are switched off once
+(`withSettingDefaults` in `src/lib/settingsDefaults.js`): units in order, certificate expiry, a new password
+at first sign-in, deactivation after inactivity. Turn them on deliberately.
 
-Integrations, API, single sign-on, e-commerce and billing settings are sent to administrators only
-(`ADMIN_SETTINGS` in `server/access.js`). Do not add secret keys to these settings until that feature is
-built with server-side storage for them.
+### Connecting outside services
+
+Keys and client secrets are typed into the settings page and saved **on the server only** (the `_secrets`
+record; `server/services.js`). A browser is only ever told "saved, ending in 1234". The same values can be
+supplied as environment variables instead.
+
+| Service | Where | What to enter |
+| --- | --- | --- |
+| Email | Integrations → Email | Resend or SendGrid API key and a verified "from" address |
+| Card payments | E-commerce → Stripe | Stripe secret key. Learners pay on Stripe's checkout page; the server asks Stripe whether the session was paid before enrolling anyone |
+| PayPal | E-commerce → PayPal | Account email. PayPal does not report back, so each order waits for "Mark as paid" under Reports → Sales |
+| Zoom | Integrations → Zoom | A Server-to-Server OAuth app's account ID, client ID and secret; sessions get a "Create meeting" button |
+| BigBlueButton | Integrations → BigBlueButton | Server address and shared secret; the room opens when the first person joins |
+| Teams, GoTo | — | Paste the meeting link into the session |
+| BambooHR | Integrations → BambooHR | Subdomain and API key, then "Import employees now" |
+| Google, Facebook, LinkedIn sign-in | Users | Client ID and secret; redirect address `/api/oauth` |
+| Single sign-on | Users | OpenID Connect issuer, client ID and secret. SAML and LDAP are not supported |
+| Zapier, Salesforce, Shopify, WooCommerce | Integrations | Through webhooks and the REST API below |
+
+These connections were written against each service's published API and **have not been run against live
+accounts**; test each one after entering its keys.
+
+### REST API
+
+Switched on under Integrations → API, where keys are issued (shown once; only a fingerprint is stored).
+Send the key as `Authorization: Bearer <key>`.
+
+```
+GET    /api/v1/users            ?email=
+POST   /api/v1/users            { firstName, lastName, email, password?, userType? }
+PATCH  /api/v1/users/:id        { active?, firstName?, lastName?, phone? }
+GET    /api/v1/courses
+GET    /api/v1/enrollments      ?userId=&courseId=&email=
+POST   /api/v1/enrollments      { userId | email, courseId | courseCode }
+DELETE /api/v1/enrollments      same fields
+GET    /api/v1/certificates     ?userId=&email=
+POST   /api/v1/orders           { email, firstName, lastName, courseCodes | courseIds, reference?, amount? }
+```
+
+`POST /api/v1/orders` is for online stores: it creates the buyer's account if needed and enrolls it.
 
 ## Course authoring
 
@@ -116,78 +168,60 @@ preview on the right, Publish in the header.
 **Standard content** — rich text lessons, web links, video (upload or YouTube/Vimeo), audio,
 PDF/presentation/document upload, iFrame embeds.
 **Learning activities** — tests (single choice, multiple answers, true/false, free text, pass mark, time
-limit, attempts, shuffle), surveys, assignments with file upload, instructor-led sessions with
-date/location/capacity, SCORM · xAPI · cmi5 packages.
+limit, **attempt limit**, shuffle), surveys, assignments with file upload, instructor-led sessions with
+date/location/capacity and an **online meeting**, SCORM · xAPI · cmi5 packages.
 **More** — sections, clone units from another course, link units from another course.
 
-Course-level tools: enrolled users panel, duplicate course, and **Course options** (the gear button), a
-tabbed panel whose settings all take effect for learners:
+Course-level tools: enrolled users panel (mark complete, reset attempts), the course's discussion, duplicate
+course, and **Course options** (the gear button):
 
 | Tab | Options |
 | --- | --- |
-| Info | Activation, unique code, category, intro video (YouTube/Vimeo link or uploaded file, shown under the description in the builder, as a play button on the catalog card and on the public page), price, instructors, difficulty, banner theme |
-| Availability | Catalog visibility; capacity (a full course leaves the catalog, manual enrollment still works); public sharing (`/share/:courseId`, no account needed, guest progress kept in that browser); enrollment request (switching it off lets learners enroll themselves, but only if self-enrollment is also on in Account & Settings → Courses) |
-| Limits | Time limit in days from enrollment, or a start/end timeframe; access retention keeps completed learners in after either runs out. Expired or not-yet-open courses are locked in My courses and the player. |
-| Completion | Completion rule and certificate template: Classic, Fancy, Modern or Simple. Issued certificates keep the template they were issued with. |
+| Info | Activation, unique code, category, intro video, price, instructors, difficulty, banner theme, custom fields |
+| Availability | Catalog visibility; capacity; public sharing (`/share/:courseId`); enrollment request |
+| Limits | Time limit in days from enrollment, or a start/end timeframe; access retention |
+| Completion | Completion rule — all units, only the final test, or an instructor marks it — and certificate template |
 
-The rules live in `src/lib/courseAccess.js`.
+A learner who uses up a test's attempts fails the course until an instructor resets it.
 
 ## Courses copied from TalentLMS
 
 The real GA Healthcare courses were copied from gahctc.talentlms.com on 27/09/2026: **Nursing Assistant**,
 **NCLEX PN REVIEW COURSE**, **NCLEX RN REVIEW** and **Instructor onbording** (names as they were in
-TalentLMS). Only courses came across. No users, enrollments or other data were copied, and TalentLMS's two
-built-in sample courses were skipped.
+TalentLMS). Only courses came across. No users, enrollments or other data were copied.
 
-- `src/lib/importedCourses.json` holds the courses: sections, lessons, the assignment, test settings and
-  instructions. `src/lib/importedCourses.js` merges them into the portal once (marker: `courseImports`), so
-  existing portals keep their users and later edits are never overwritten. The first three replace the
-  portal's sample courses of the same name, keeping their ids.
+- `src/lib/importedCourses.json` holds the courses; `src/lib/importedCourses.js` merges them in once.
 - `public/course-files/<course>/` holds the 40 documents and 24 videos (about 335 MB), served with the app.
-  Documents are TalentLMS's PDF renderings, because downloads of the original Word and PowerPoint files are
-  switched off there.
-- **Test questions were not copied.** TalentLMS refused to release them for the signed-in account. The 30
-  tests keep their names, pass marks, attempts and instructions, and the test editor flags each one until
-  questions are added. A test with no questions cannot be taken, so those courses cannot be completed until
-  then.
+- **Test questions were not copied.** TalentLMS refused to release them. The 30 tests keep their names, pass
+  marks, attempts and instructions, and the test editor flags each one until questions are added. A test with
+  no questions cannot be taken, so those courses cannot be completed until then — and with **Unit navigation**
+  set to "In order", learners would stop at the first empty test.
 
-## Enrollment requests
+## What learners get
 
-Learners cannot enroll themselves. From **Course catalog** a learner can *request* a course; the request
-lands in the **Enrollment requests** widget on the administrator dashboard, where Approve creates the
-enrollment immediately and Decline closes the request (the learner can ask again). A pending request shows
-as "Awaiting approval" on the learner's catalog card.
+Assigned courses with a unit-by-unit player (summary page, units in order when that is on, discussion,
+rating), tests graded on submit, assignment uploads, feedback from instructors, certificates with a public
+verification page (`/verify/<number>`), learning paths, a Skills page with assessments, an Achievements page
+with points, badges, levels and the leaderboard, the catalog with checkout for paid courses, an internal
+message box and their profile with purchases and invoices.
 
 ## Responsive layout
 
-The portal is built for phones, tablets and desktops:
-
-- Below `lg` the blue rail becomes an off-canvas drawer opened from the hamburger, with a backdrop, and it
-  closes automatically on navigation. From `lg` up the same button collapses the rail to icons.
-- The topbar shrinks to 64px, drops the boxed logo and the name/role block, and keeps search usable.
+- Below `lg` the rail becomes an off-canvas drawer opened from the hamburger; from `lg` up the same button
+  collapses the rail to icons.
 - Account & Settings turns its vertical tab rail into a scrollable strip; the course builder stacks the
   unit list above the preview; tables scroll horizontally inside their card.
 - Modals become full-width sheets with stacked footer buttons.
 
-Motion is kept light — page and card fades, a slide-in drawer, scaling menus, animated progress bars — and
-everything is disabled under `prefers-reduced-motion`.
-
-## What learners get
-
-Assigned courses with a unit-by-unit player, progress tracking, quizzes graded on submit, assignment
-uploads, feedback from instructors, an automatically issued certificate on completion, an internal
-message box and their own profile and password settings.
+Motion is kept light and is disabled under `prefers-reduced-motion`.
 
 ## Hosting
 
 The live site is on Vercel (`lms-xi-five-47.vercel.app`), deployed from `main`. `vercel.json` sends every
-path that is not a real file or an `/api` route to `index.html`, so reloading `/users` or `/courses/...`
-opens the app instead of Vercel's 404 page.
+path that is not a real file or an `/api` route to `index.html`, maps `/api/v1/...` to the REST API, and
+runs `/api/cron` once a day.
 
 ## Shared database
-
-Accounts and data are shared across devices once a Postgres database is connected; until then the portal
-keeps everything in the browser where it was entered, and administrators see a notice saying so.
 
 **Connecting it (one time, in the Vercel dashboard):**
 
@@ -204,26 +238,26 @@ keeps everything in the browser where it was entered, and administrators see a n
 **How it works:**
 
 - `api/*.js` are Vercel Functions that call `server/handler.js`. Records live in one Postgres table
-  (`collection`, `id`, `data`); password hashes (scrypt) live in their own table and never reach a browser.
+  (`collection`, `id`, `data`); password hashes (scrypt) and uploaded files have their own tables.
+  Collections whose name starts with `_` (sessions and two-factor secrets, service keys, API key
+  fingerprints) never reach a browser.
 - Signing in sets an HttpOnly session cookie. Setting a new password or deactivating an account signs that
   user out everywhere.
-- Every change is sent to `/api/sync`, where `server/access.js` checks it against the user's role:
-  learners can only change their own profile, progress, submissions and requests; instructors their own
-  courses and grading; administrators everything. Learners receive only their own records.
+- Every change is sent to `/api/sync`, where `server/access.js` checks it against the user's role. Orders,
+  scheduled jobs and the email log are written by the server only; prices are always worked out there.
+- Single actions (sign-up, two-factor, checkout, uploads, keys) go through `/api/rpc` (`server/rpc.js`).
 - Open pages pick up other people's changes when the tab regains focus and once a minute.
 - `npm run dev` runs the same API locally against `.data/lms-db.json` (or against Neon if
   `DATABASE_URL` is set). After changing `src/lib/seed.js`, run `npm run seed:export`.
 
 ## Data & storage
 
-- Without a database: structured data (users, courses, enrollments, settings) → `localStorage`.
-- With a database: the same data in Postgres, as above.
 - Course files copied from TalentLMS → `public/course-files`, served with the site.
-- Media uploaded from the course builder (video, audio, PDFs, SCORM zips, attachments) → IndexedDB in the
-  uploading browser (`src/lib/fileStore.js`). **These uploads are not shared yet**: learners on other
-  devices will not see them until file storage (for example Vercel Blob) is added.
-- Backup and restore from **Account & Settings → Import-Export**, which also resets the portal to the
-  sample content.
+- Files uploaded in the portal (course media, assignment attachments): with the database, files **up to
+  4 MB** are stored in it and open on every device. Larger ones stay in the uploading browser (IndexedDB)
+  and the editor says so; use a YouTube or Vimeo link for video.
+- Backup and restore from **Account & Settings → Import-Export**. Passwords and service keys are never in
+  the export.
 
 ## Project layout
 
@@ -231,26 +265,29 @@ keeps everything in the browser where it was entered, and administrators see a n
 src/
   components/
     charts/      activity bar chart, donut, mini bars
-    course/      course hero, unit editors, unit viewer, unit type registry
-    layout/      topbar, sidebar, app shell, logo
+    course/      hero, unit editors and viewer, catalog card, checkout, discussion, invoice, certificate
+    layout/      topbar, sidebar, app shell, sign-in shell, logo
     ui/          buttons, fields, tables, modals, drawers, icons
-  context/       data store (local or server-synced), auth/session, toasts
-  lib/           storage, file store, permissions, seed data, API client, sync, helpers
-api/             Vercel Functions, one per API route
-server/          API handler, access rules, password hashing, Postgres/file store, seed data
-scripts/         export-seed.mjs
+    users/       password and login-details dialogs, custom field inputs
+  context/       data store (local or server-synced), auth/session/gates, toasts
+  lib/           rules, engine, commerce, gamification, settings defaults (shared with the server);
+                 storage, file store, permissions, seed data, API client, sync, translations
   pages/
-    admin/       dashboard, users, courses, builder, store, learning paths, groups,
-                 branches, automations, notifications, reports, skills, settings,
-                 subscription
+    admin/       dashboard, users, courses, builder, store, learning paths, groups, branches,
+                 automations, notifications, reports, skills, settings, subscription
     instructor/  home, learners, grading
-    learner/     home, my courses, player, catalog, certificates
-    shared/      profile, messages, not found
+    learner/     home, my courses, player, catalog, certificates, paths, skills, achievements
+    public/      homepage, external catalog, email confirmation, certificate verification
+    shared/      profile, messages, public course, not found
+api/             Vercel Functions, one per API route
+server/          handler (routes), core (sessions, saving), access rules, rpc actions, REST API,
+                 outside services, password hashing and two-factor, Postgres/file store, seed data
+scripts/         export-seed.mjs
 ```
 
 ## Branding
 
-Colours, fonts and spacing are defined in `tailwind.config.js` and `src/index.css` — navy `#012053`,
-action blue `#1a56db`, rail blue `#1052a8`, GA gold `#c9a227`, and Mulish throughout (700 at 23px/30px
-for page headings, 700 at 16px/21px for widget titles, 400 at 14px/22px for body copy). Upload a logo file in
-**Account & Settings → Portal → Branding** to replace the built-in wordmark everywhere.
+Colours, fonts and spacing are defined in `tailwind.config.js` and `src/index.css`. The menu, action and
+text colours are CSS variables, so the theme chosen under Account & Settings → Portal restyles the portal;
+the default is navy `#012053`, action blue `#1a56db`, rail blue `#1052a8`, GA gold `#c9a227`, in Mulish.
+Upload a logo in **Account & Settings → Portal → Branding** to replace the built-in wordmark everywhere.

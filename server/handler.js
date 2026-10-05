@@ -3,8 +3,8 @@
  * development the same handler is mounted by the Vite plugin in vite.config.js.
  *
  *   GET  /api/health         which database is connected (none = browser-only mode)
- *   GET  /api/public         branding, sign-up options and the external catalog
- *   GET  /api/public-course  a course with public sharing on (?id=)
+ *   GET  /api/public         branding, sign-up options and the external catalog;
+ *                            with ?course=<id>, a course that has public sharing on
  *   POST /api/login          { email, password } or { ticket, code } -> session cookie
  *   POST /api/logout
  *   GET  /api/data           everything the signed-in user may see
@@ -71,20 +71,19 @@ const routes = {
 
   async public(req, res) {
     const { store } = await openStore()
+    // One function serves both: Vercel's Hobby plan allows twelve per deployment.
+    const courseId = queryOf(req).get('course')
+    if (courseId) {
+      const course = await store.get('courses', courseId)
+      if (!course || course.status !== 'active' || !course.publicSharing) throw new HttpError(404, 'This course is not shared.')
+      return send(res, 200, { course })
+    }
     const raw = (await store.get('settings', 'portal')) || {}
     const settings = withSettingDefaults(raw)
     const { values: secrets } = await loadSecrets(store)
     const body = { settings: publicSettings(raw, { social: signInProviders(settings, secrets) }) }
     if (settings.courses.externalCatalog) body.catalog = publicCatalog(await loadDb(store))
     send(res, 200, body)
-  },
-
-  async 'public-course'(req, res) {
-    const { store } = await openStore()
-    const id = queryOf(req).get('id') || ''
-    const course = await store.get('courses', id)
-    if (!course || course.status !== 'active' || !course.publicSharing) throw new HttpError(404, 'This course is not shared.')
-    send(res, 200, { course })
   },
 
   async login(req, res) {

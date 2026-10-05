@@ -1,4 +1,4 @@
-import { cx } from '../../lib/utils'
+import { cx, plainText } from '../../lib/utils'
 
 const PALETTE = {
   cna: { tag: 'Nursing Assistant', accent: '#c9a227' },
@@ -44,7 +44,7 @@ export default function CourseHero({ course, className, size = 'md', tags }) {
         )}
 
         {course?.description && size !== 'sm' && (
-          <p className="text-white/75 text-[13.5px] leading-6 max-w-xl mt-4 line-clamp-3">{course.description}</p>
+          <p className="text-white/75 text-[13.5px] leading-6 max-w-xl mt-4 line-clamp-3">{plainText(course.description)}</p>
         )}
 
         <div className="flex flex-wrap gap-2 mt-5">

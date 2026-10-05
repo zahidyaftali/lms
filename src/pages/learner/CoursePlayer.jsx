@@ -15,7 +15,7 @@ import { useToast } from '../../context/ToastContext'
 import { putFile } from '../../lib/fileStore'
 import { accessWindow, unitsInOrder } from '../../lib/courseAccess'
 import { contentUnits as unitsOf, testAttemptsLeft, unitLocked } from '../../lib/rules.js'
-import { formatDay, fullName } from '../../lib/utils'
+import { formatDay, fullName, plainText } from '../../lib/utils'
 import { useT } from '../../lib/i18n'
 
 export default function CoursePlayer() {
@@ -143,7 +143,7 @@ export default function CoursePlayer() {
       {tab === 'about' && (
         <section className="card card-pad max-w-4xl">
           <h2 className="card-title mb-2">{course.name}</h2>
-          {course.description && <p className="text-[14.5px] leading-7 text-ink-700 whitespace-pre-line mb-5">{course.description}</p>}
+          {course.description && <p className="text-[14.5px] leading-7 text-ink-700 whitespace-pre-line mb-5">{plainText(course.description)}</p>}
           {hasIntroVideo(course.introVideo) && <IntroVideo video={course.introVideo} title={`${course.name} introduction`} className="mb-6" />}
 
           <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-3 text-[14px] mb-6">

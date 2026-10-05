@@ -6,7 +6,7 @@ import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { accessWindow } from '../../lib/courseAccess'
 import { statusLabel, statusTone } from '../../lib/rules.js'
-import { formatDate, formatDay } from '../../lib/utils'
+import { formatDate, formatDay, plainText } from '../../lib/utils'
 import { useT } from '../../lib/i18n'
 
 export default function MyCourses() {
@@ -72,7 +72,7 @@ export default function MyCourses() {
                     <h3 className="text-[15.5px] font-semibold leading-6 flex-1">{course.name}</h3>
                     <Badge tone={statusTone(enrollment.status)}>{t(statusLabel(enrollment.status))}</Badge>
                   </div>
-                  <p className="hint line-clamp-2 mb-4">{course.description}</p>
+                  <p className="hint line-clamp-2 mb-4">{plainText(course.description)}</p>
 
                   <div className="mt-auto">
                     {showBar && (
