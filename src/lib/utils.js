@@ -1,3 +1,6 @@
+import { CURRENCIES } from './commerce.js'
+import { displayName } from './rules.js'
+
 export const uid = (prefix = 'id') =>
   `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
 
@@ -10,32 +13,88 @@ export function initials(user) {
   return ((a[0] || '') + (b[0] || '')).toUpperCase() || (user.email || '?')[0].toUpperCase()
 }
 
+const ZONES = [
+  ['Eastern', 'America/New_York'],
+  ['Central', 'America/Chicago'],
+  ['Mountain', 'America/Denver'],
+  ['Pacific', 'America/Los_Angeles'],
+  ['Alaska', 'America/Anchorage'],
+  ['Hawaii', 'Pacific/Honolulu'],
+  ['Atlantic', 'America/Halifax'],
+  ['UTC', 'UTC'],
+]
+
+/**
+ * How dates, money and names are written, taken from Account & Settings →
+ * Portal and Users. Set whenever the portal's settings load or change.
+ */
+const locale = { dateFormat: 'DD/MM/YYYY', timeZone: undefined, currency: 'USD', nameFormat: 'First name and last name' }
+
+export function configureLocale(settings) {
+  locale.dateFormat = settings?.dateFormat === 'MM/DD/YYYY' ? 'MM/DD/YYYY' : 'DD/MM/YYYY'
+  locale.timeZone = ZONES.find(([label]) => String(settings?.timezone || '').includes(label))?.[1]
+  locale.currency = CURRENCIES[settings?.currency] || 'USD'
+  locale.nameFormat = settings?.users?.nameFormat || 'First name and last name'
+}
+
 export function fullName(user) {
-  if (!user) return 'Unknown user'
-  return `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
+  return displayName(user, locale.nameFormat)
 }
 
 /** "A. Goodrigge" style short name used across list views. */
 export function shortName(user) {
   if (!user) return 'Unknown'
+  if (locale.nameFormat === 'Email address') return user.email || 'Unknown'
   const f = (user.firstName || '').trim()
   const l = (user.lastName || '').trim()
   if (!l) return f || user.email
   return `${f ? f[0] + '.' : ''} ${l}`.trim()
 }
 
+function dateParts(d, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone, day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(d)
+    const get = (type) => parts.find((p) => p.type === type)?.value
+    return { day: get('day'), month: get('month'), year: get('year') }
+  } catch {
+    const p = (n) => String(n).padStart(2, '0')
+    return { day: p(d.getDate()), month: p(d.getMonth() + 1), year: String(d.getFullYear()) }
+  }
+}
+
+const arrange = ({ day, month, year }) =>
+  locale.dateFormat === 'MM/DD/YYYY' ? `${month}/${day}/${year}` : `${day}/${month}/${year}`
+
+/** A moment in time, shown in the portal's time zone and date format. */
 export function formatDate(value) {
+  if (!value) return '-'
+  // A calendar day ("2026-10-01") has no time zone: it is written as it stands.
+  const day = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})(T00:00)?$/)
+  if (day) return arrange({ year: day[1], month: day[2], day: day[3] })
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return arrange(dateParts(d, locale.timeZone))
+}
+
+/** A day worked out on this device's clock (course start and end dates), in the portal's date format. */
+export function formatDay(value) {
   if (!value) return '-'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`
+  return arrange(dateParts(d, undefined))
 }
 
 export function formatDateTime(value) {
   if (!value) return '-'
   const d = new Date(value)
-  return `${formatDate(value)}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  if (Number.isNaN(d.getTime())) return '-'
+  let time
+  try {
+    time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: locale.timeZone })
+  } catch {
+    time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+  return `${formatDate(value)}, ${time}`
 }
 
 /** Relative time, matching the "16 hours ago / Just now" style of the timeline. */
@@ -52,10 +111,18 @@ export function timeAgo(value) {
   return formatDate(value)
 }
 
+/** An amount in the portal's currency. */
+export function price(value) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: locale.currency }).format(Number(value) || 0)
+}
+
+/** Like `price`, but nothing to charge shows as a dash. */
 export function money(value) {
   if (value == null || value === '' || Number(value) === 0) return '-'
-  return `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return price(value)
 }
+
+export const currencySymbol = () => price(0).replace(/[\d.,\s]/g, '')
 
 export function duration(minutes) {
   const m = Math.max(0, Math.round(minutes || 0))
@@ -75,10 +142,17 @@ export function fileSize(bytes) {
 }
 
 export function randomPassword(length = 10) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-  let out = ''
-  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)]
-  return out
+  // Always holds an uppercase letter, a lowercase letter and a number, so it passes the strong-password rule.
+  const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789']
+  const all = sets.join('')
+  const pick = (chars) => chars[Math.floor(Math.random() * chars.length)]
+  const out = sets.map(pick)
+  while (out.length < Math.max(length, sets.length)) out.push(pick(all))
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out.join('')
 }
 
 /**

@@ -43,7 +43,7 @@ export default function Sidebar({ collapsed, mobileOpen, onHelp }) {
   return (
     <aside
       className={cx(
-        'bg-rail text-white flex flex-col z-30 w-[256px] shrink-0',
+        'bg-rail text-rail-text flex flex-col z-30 w-[256px] shrink-0',
         'transition-transform duration-300 lg:transition-all',
         /* Off-canvas below lg, part of the layout from lg up. */
         'fixed inset-y-0 top-16 left-0 lg:static lg:top-0',
@@ -64,8 +64,8 @@ export default function Sidebar({ collapsed, mobileOpen, onHelp }) {
                 /* Collapsing only applies from lg up — the mobile drawer always shows labels. */
                 collapsed && 'lg:justify-center lg:px-0',
                 isActive
-                  ? 'bg-rail-active text-white font-semibold'
-                  : 'text-white hover:bg-rail-hover',
+                  ? 'bg-rail-active font-semibold'
+                  : 'hover:bg-rail-hover',
               )
             }
           >

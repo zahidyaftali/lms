@@ -12,7 +12,7 @@
  * "_" are server-only and never sent to a browser. Password hashes live in their
  * own table so no query that feeds a page can ever read them.
  */
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 const databaseUrl = () => process.env.DATABASE_URL || process.env.POSTGRES_URL || ''
@@ -58,6 +58,15 @@ export function sqlStore(sql) {
           user_id text primary key,
           hash text not null,
           updated_at timestamptz not null default now()
+        )`
+        await sql`create table if not exists lms_files (
+          id text primary key,
+          name text not null,
+          type text not null,
+          size integer not null,
+          owner text,
+          data text not null,
+          created_at timestamptz not null default now()
         )`
       })()
       return schemaReady
@@ -106,12 +115,32 @@ export function sqlStore(sql) {
       if (!userIds.length) return
       await sql`delete from lms_credentials where user_id = any(${userIds})`
     },
+    /** Every record of one collection, including the server-only ones that start with "_". */
+    async allIn(collection) {
+      const rows = await sql`select data from lms_records where collection = ${collection}`
+      return rows.map((r) => r.data)
+    },
+    /** Uploaded course files and assignment attachments; `data` is base64. */
+    async putFile(file) {
+      await sql`insert into lms_files (id, name, type, size, owner, data)
+        values (${file.id}, ${file.name}, ${file.type}, ${file.size}, ${file.owner}, ${file.data})
+        on conflict (id) do nothing`
+    },
+    async getFile(id) {
+      const rows = await sql`select id, name, type, size, owner, data from lms_files where id = ${id}`
+      return rows[0] ?? null
+    },
+    async removeFile(id) {
+      await sql`delete from lms_files where id = ${id}`
+    },
   }
 }
 
 /* ------------------------------------------------------------ local JSON file */
 
 function fileStore(path) {
+  const filesDir = resolve(dirname(path), 'files')
+  const safe = (id) => String(id).replace(/[^w-]/g, '')
   let queue = Promise.resolve()
   const read = () => {
     if (!existsSync(path)) return { records: {}, credentials: {} }
@@ -172,5 +201,19 @@ function fileStore(path) {
       change((db) => {
         userIds.forEach((id) => delete db.credentials[id])
       }),
+    async allIn(collection) {
+      return Object.values(read().records[collection] || {})
+    },
+    async putFile(file) {
+      mkdirSync(filesDir, { recursive: true })
+      writeFileSync(resolve(filesDir, `${safe(file.id)}.json`), JSON.stringify(file))
+    },
+    async getFile(id) {
+      const at = resolve(filesDir, `${safe(id)}.json`)
+      return existsSync(at) ? JSON.parse(readFileSync(at, 'utf8')) : null
+    },
+    async removeFile(id) {
+      rmSync(resolve(filesDir, `${safe(id)}.json`), { force: true })
+    },
   }
 }

@@ -11,7 +11,8 @@ import { pathToFileURL } from 'node:url'
 function portalApi() {
   const mount = (server) => {
     server.middlewares.use(async (req, res, next) => {
-      const route = req.url?.match(/^\/api\/([\w-]+)(?:\?|$)/)?.[1]
+      // /api/v1/users reaches the v1 route, as the rewrite in vercel.json does in production.
+      const route = req.url?.match(/^\/api\/([\w-]+)(?:[/?]|$)/)?.[1]
       if (!route) return next()
       const { handle } = await import(pathToFileURL(resolve('server/handler.js')).href)
       await handle(req, res, route)

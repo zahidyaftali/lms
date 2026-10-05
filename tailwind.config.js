@@ -7,11 +7,13 @@ export default {
         sans: ['Mulish', 'Arial', 'Helvetica Neue', 'sans-serif'],
       },
       colors: {
-        /* Left navigation: royal blue rail with a darker active row. */
+        /* Left navigation. Like brand, ink and line below, these read CSS variables so the
+           theme chosen in Account & Settings → Portal can restyle the portal (see index.css). */
         rail: {
-          DEFAULT: '#1052a8',
-          hover: '#1a5cb4',
-          active: '#0a3c86',
+          DEFAULT: 'rgb(var(--rail) / <alpha-value>)',
+          hover: 'rgb(var(--rail-hover) / <alpha-value>)',
+          active: 'rgb(var(--rail-active) / <alpha-value>)',
+          text: 'rgb(var(--rail-text) / <alpha-value>)',
         },
         navy: {
           50: '#eef3fb',
@@ -26,17 +28,17 @@ export default {
           900: '#012053',
         },
         brand: {
-          DEFAULT: '#1a56db',
-          50: '#eff4ff',
-          100: '#dbe6fe',
-          200: '#bed0fe',
-          300: '#91b0fd',
-          400: '#6288fa',
-          500: '#3f63f5',
-          600: '#2544e9',
-          700: '#1a56db',
-          800: '#1c3aad',
-          900: '#1e3888',
+          DEFAULT: 'rgb(var(--brand-700) / <alpha-value>)',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
+          800: 'rgb(var(--brand-800) / <alpha-value>)',
+          900: 'rgb(var(--brand-900) / <alpha-value>)',
         },
         gold: {
           400: '#e3c456',
@@ -44,14 +46,14 @@ export default {
           600: '#a8851d',
         },
         ink: {
-          900: '#232323',
-          700: '#4f4f4f',
-          500: '#757575',
-          400: '#a0a0a0',
+          900: 'rgb(var(--ink-900) / <alpha-value>)',
+          700: 'rgb(var(--ink-700) / <alpha-value>)',
+          500: 'rgb(var(--ink-500) / <alpha-value>)',
+          400: 'rgb(var(--ink-400) / <alpha-value>)',
         },
         /* Hairline used for every card, table and input border. */
-        line: '#ededf1',
-        'line-strong': '#e2e4ea',
+        line: 'rgb(var(--line) / <alpha-value>)',
+        'line-strong': 'rgb(var(--line-strong) / <alpha-value>)',
         canvas: '#ffffff',
       },
       boxShadow: {

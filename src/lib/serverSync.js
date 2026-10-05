@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS } from './seed'
+import { withSettingDefaults } from './settingsDefaults.js'
 
 /**
  * Keeping the in-memory portal and the shared database in step. After every
@@ -23,11 +23,17 @@ export const COLLECTIONS = [
   'learningPaths',
   'automations',
   'skills',
+  'discussions',
+  'ratings',
+  'skillResults',
+  'orders',
+  'jobs',
+  'outbox',
 ]
 
 export const emptyState = (settings = {}) => ({
   version: 1,
-  settings: { ...DEFAULT_SETTINGS, ...settings },
+  settings: withSettingDefaults(settings),
   courseImports: [],
   auditLog: [],
   ...Object.fromEntries(COLLECTIONS.map((c) => [c, []])),

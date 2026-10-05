@@ -1,141 +1,10 @@
 import { daysAgo, hoursAgo } from './utils'
+import { DEFAULT_SETTINGS, withSettingDefaults } from './settingsDefaults.js'
 
 const u = (id) => `u_${id}`
 const c = (id) => `c_${id}`
 
-export const DEFAULT_SETTINGS = {
-  siteName: 'GA Healthcare Training - CNA Program',
-  siteDescription:
-    "GA Healthcare Training & Consulting offers expert-led CNA certification training founded by Dr. Yolaine Nozile, PhD, RN — building competent, career-ready nursing assistants for today's healthcare world.",
-  domain: 'portal.gahealthcaretraining.com',
-  website: 'https://gahealthcaretraining.com/',
-  supportEmail: 'info@gahealthcaretraining.com',
-  supportPhone: '(770) 872-8033',
-  address: 'Atlanta, Georgia',
-  logo: null,
-  favicon: null,
-  theme: 'GA Healthcare (default)',
-  timezone: '(GMT -05:00) Eastern Time (US & Canada)',
-  language: 'English (US)',
-  dateFormat: 'DD/MM/YYYY',
-  currency: 'US Dollar ($)',
-  announcements: { internalOn: false, internal: '', externalOn: false, external: '' },
-  homepage: { custom: false, headline: '', intro: '' },
-  users: {
-    selfRegistration: false,
-    defaultUserType: 'Learner-Type',
-    defaultGroupId: '',
-    allowedDomains: '',
-    verification: 'None',
-    termsOn: false,
-    terms: '',
-    nameFormat: 'First name and last name',
-    socialGoogle: false,
-    socialFacebook: false,
-    socialLinkedIn: false,
-    customFields: [],
-    passwordMinLength: 8,
-    forcePasswordReset: true,
-    inactivityDays: 90,
-    welcomeEmail: true,
-  },
-  sso: { type: 'None', identityProvider: '', certificate: '', signInUrl: '', signOutUrl: '', emailAttribute: '' },
-  courses: {
-    defaultCompletionRule: 'All units must be completed',
-    unitNavigation: 'In order',
-    showSummary: true,
-    discussions: true,
-    ratings: false,
-    externalCatalog: false,
-    catalogLayout: 'Cards',
-    socialSharing: false,
-    certificateEnabled: true,
-    certificateValidity: '24 months',
-    certificateTemplate: 'Classic',
-    allowSelfEnrollment: false,
-    showProgressBar: true,
-    customFields: [],
-  },
-  skills: {
-    enabled: false,
-    learners: true,
-    recommendations: false,
-    levels: false,
-    questions: 10,
-    passMark: 70,
-    retryDays: 7,
-    expiryMonths: 0,
-  },
-  gamification: {
-    enabled: false,
-    points: {
-      enabled: true,
-      login: 25,
-      unit: 25,
-      course: 150,
-      certificate: 150,
-      test: 150,
-      assignment: 150,
-      session: 150,
-      discussion: 25,
-      upvote: 10,
-    },
-    badges: {
-      enabled: true,
-      set: 'Classic',
-      activity: true,
-      learning: true,
-      test: true,
-      assignment: true,
-      perfectionism: true,
-      survey: true,
-      communication: true,
-      certification: true,
-    },
-    levels: { enabled: true, everyPoints: 3000, everyCourses: 5, everyBadges: 5 },
-    rewards: { enabled: false, points: 0, pointsDiscount: 0, badges: 0, badgesDiscount: 0, level: 0, levelDiscount: 0 },
-    leaderboard: { enabled: true, levels: true, points: true, badges: true, courses: true, certifications: true },
-  },
-  ecommerce: {
-    processor: 'None',
-    paypalEmail: '',
-    subscription: { enabled: false, fee: 0, interval: 'Monthly', trialDays: 0 },
-    coupons: [],
-    globalDiscount: 0,
-    credits: false,
-    invoices: { enabled: false, details: '', note: '' },
-  },
-  integrations: {},
-  api: { enabled: false },
-  security: {
-    twoFactor: false,
-    twoFactorFor: 'Administrators',
-    strongPasswords: false,
-    passwordExpiryDays: 0,
-    singleSession: false,
-    allowedIps: '',
-    sessionTimeout: 60,
-    loginAttempts: 5,
-    auditLog: true,
-  },
-  subscription: { company: '', billingEmail: '', address: '', taxId: '', userLimit: 0, courseLimit: 0 },
-}
-
-const isPlain = (v) => !!v && typeof v === 'object' && !Array.isArray(v)
-
-function fillDefaults(defaults, saved) {
-  const out = { ...defaults, ...saved }
-  for (const [key, value] of Object.entries(defaults)) {
-    if (isPlain(value)) out[key] = fillDefaults(value, isPlain(saved[key]) ? saved[key] : {})
-  }
-  return out
-}
-
-/**
- * Settings saved by an earlier version of the portal predate newer options and
- * whole groups (gamification, e-commerce …); this fills those in with defaults.
- */
-export const withSettingDefaults = (settings) => fillDefaults(DEFAULT_SETTINGS, settings || {})
+export { DEFAULT_SETTINGS, withSettingDefaults }
 
 export const DEFAULT_USER_TYPES = [
   {
@@ -1041,5 +910,11 @@ export function buildSeed() {
     learningPaths: [],
     automations: [],
     skills: [],
+    discussions: [],
+    ratings: [],
+    skillResults: [],
+    orders: [],
+    jobs: [],
+    outbox: [],
   }
 }

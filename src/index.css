@@ -2,6 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme colours, as "R G B" so Tailwind can add opacity (see tailwind.config.js).
+ * App.jsx sets data-theme on <html> from Account & Settings → Portal → Theme.
+ */
+:root {
+  --brand-50: 239 244 255;
+  --brand-100: 219 230 254;
+  --brand-200: 190 208 254;
+  --brand-300: 145 176 253;
+  --brand-400: 98 136 250;
+  --brand-500: 63 99 245;
+  --brand-600: 37 68 233;
+  --brand-700: 26 86 219;
+  --brand-800: 28 58 173;
+  --brand-900: 30 56 136;
+  --rail: 16 82 168;
+  --rail-hover: 26 92 180;
+  --rail-active: 10 60 134;
+  --rail-text: 255 255 255;
+  --ink-900: 35 35 35;
+  --ink-700: 79 79 79;
+  --ink-500: 117 117 117;
+  --ink-400: 160 160 160;
+  --line: 237 237 241;
+  --line-strong: 226 228 234;
+}
+[data-theme='navy'] {
+  --brand-50: 238 243 251;
+  --brand-100: 214 226 245;
+  --brand-200: 169 193 232;
+  --brand-300: 111 149 212;
+  --brand-400: 59 106 192;
+  --brand-500: 27 77 168;
+  --brand-600: 15 60 140;
+  --brand-700: 15 60 140;
+  --brand-800: 9 47 115;
+  --brand-900: 1 32 83;
+  --rail: 1 32 83;
+  --rail-hover: 9 47 115;
+  --rail-active: 168 133 29;
+}
+[data-theme='light'] {
+  --rail: 243 244 247;
+  --rail-hover: 231 233 238;
+  --rail-active: 219 230 254;
+  --rail-text: 35 35 35;
+}
+[data-theme='contrast'] {
+  --brand-50: 232 240 255;
+  --brand-100: 204 221 255;
+  --brand-200: 153 187 255;
+  --brand-300: 102 144 240;
+  --brand-400: 51 102 214;
+  --brand-500: 20 72 190;
+  --brand-600: 0 51 160;
+  --brand-700: 0 51 160;
+  --brand-800: 0 38 120;
+  --brand-900: 0 26 87;
+  --rail: 0 0 0;
+  --rail-hover: 38 38 38;
+  --rail-active: 0 51 160;
+  --ink-900: 0 0 0;
+  --ink-700: 26 26 26;
+  --ink-500: 64 64 64;
+  --ink-400: 89 89 89;
+  --line: 140 140 150;
+  --line-strong: 110 110 120;
+}
+
 @layer base {
   html,
   body,
@@ -204,11 +273,19 @@
     visibility: hidden;
   }
   .certificate-sheet,
-  .certificate-sheet * {
+  .certificate-sheet *,
+  .print-sheet,
+  .print-sheet * {
     visibility: visible;
   }
-  .certificate-sheet {
+  .certificate-sheet,
+  .print-sheet {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+  .print-sheet {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
   }
 }
