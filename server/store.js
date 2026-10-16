@@ -140,7 +140,7 @@ export function sqlStore(sql) {
 
 function fileStore(path) {
   const filesDir = resolve(dirname(path), 'files')
-  const safe = (id) => String(id).replace(/[^w-]/g, '')
+  const safe = (id) => String(id).replace(/[^\w-]/g, '')
   let queue = Promise.resolve()
   const read = () => {
     if (!existsSync(path)) return { records: {}, credentials: {} }

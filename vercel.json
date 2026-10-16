@@ -2,7 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     { "source": "/api/v1/:path*", "destination": "/api/v1?path=:path*" },
+    { "source": "/scorm/:path*", "destination": "/api/rpc?do=scorm.file&p=:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    { "source": "/lms-sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
   ],
   "crons": [{ "path": "/api/cron", "schedule": "0 9 * * *" }]
 }

@@ -653,7 +653,96 @@ const actions = {
       return { changed: await runTick(store, await loadDb(store), req, { force: true }) }
     },
   },
+
+  /* ---- SCORM, xAPI and cmi5 packages (opened in the browser, see src/lib/packages.js) ---- */
+
+  'scorm.put': {
+    async run({ store, body, s }) {
+      if (!isStaff(s.user)) throw new HttpError(403, 'Only administrators and instructors upload packages.')
+      const packageId = String(body.packageId || '')
+      const path = String(body.path || '')
+      const index = Number(body.index)
+      const data = String(body.data || '')
+      if (!PACKAGE_ID.test(packageId) || !safePackagePath(path) || !Number.isInteger(index) || index < 0 || index > 2000) throw new HttpError(400, 'That package file is not valid.')
+      if (data.length > (MAX_FILE * 4) / 3 + 4) throw new HttpError(413, 'That part of the package is too large.')
+      await store.putFile({ id: packagePart(packageId, path, index), name: path.slice(0, 200), type: 'application/octet-stream', size: Math.floor((data.length * 3) / 4), owner: `package:${s.user.id}`, data })
+      return { ok: true }
+    },
+  },
+
+  'scorm.finish': {
+    async run({ store, body, s }) {
+      if (!isStaff(s.user)) throw new HttpError(403, 'Only administrators and instructors upload packages.')
+      const packageId = String(body.packageId || '')
+      if (!PACKAGE_ID.test(packageId)) throw new HttpError(400, 'That package is not valid.')
+      const files = {}
+      for (const f of Array.isArray(body.files) ? body.files : []) {
+        if (!safePackagePath(f.path)) continue
+        files[f.path] = { size: Math.max(0, Number(f.size) || 0), type: String(f.type || 'application/octet-stream').slice(0, 120), chunks: Math.max(1, Math.min(2000, Number(f.chunks) || 1)) }
+      }
+      if (!Object.keys(files).length) throw new HttpError(400, 'The package has no files.')
+      await store.upsert([{ collection: '_packages', id: packageId, data: { id: packageId, kind: String(body.kind || ''), title: String(body.title || '').slice(0, 200), owner: s.user.id, files, createdAt: iso() } }])
+      return { ok: true }
+    },
+  },
+
+  /** GET /scorm/<packageId>/<path> arrives here (vercel.json); large files are sent in byte ranges. */
+  'scorm.file': {
+    async run({ store, query, req, res }) {
+      const [packageId, ...rest] = String(query.get('p') || '').split('/')
+      let path = rest.join('/')
+      try {
+        path = rest.map((part) => decodeURIComponent(part)).join('/')
+      } catch {
+        // Keep it as it came.
+      }
+      const pkg = PACKAGE_ID.test(packageId) ? await store.get('_packages', packageId) : null
+      const file = pkg?.files?.[path]
+      if (!file) {
+        res.statusCode = 404
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+        return res.end('Not found')
+      }
+      const size = file.size
+      const range = String(req.headers.range || '').match(/^bytes=(\d*)-(\d*)$/)
+      let start = 0
+      let end = size - 1
+      if (range) {
+        start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2] || 0))
+        end = range[1] && range[2] ? Math.min(size - 1, Number(range[2])) : size - 1
+      }
+      // One response carries at most one stored part (3 MB), so it stays under the platform's limit.
+      const first = Math.floor(start / PACKAGE_CHUNK)
+      const whole = !range && file.chunks <= 1
+      if (!whole) end = Math.min(end, (first + 1) * PACKAGE_CHUNK - 1)
+      if (start > end || start >= size) {
+        res.statusCode = 416
+        res.setHeader('Content-Range', `bytes */${size}`)
+        return res.end()
+      }
+      const part = await store.getFile(packagePart(packageId, path, whole ? 0 : first))
+      if (!part) {
+        res.statusCode = 404
+        return res.end('Not found')
+      }
+      const bytes = Buffer.from(part.data, 'base64')
+      const body = whole ? bytes : bytes.subarray(start - first * PACKAGE_CHUNK, end - first * PACKAGE_CHUNK + 1)
+      res.statusCode = whole ? 200 : 206
+      res.setHeader('Content-Type', file.type)
+      res.setHeader('Content-Length', String(body.length))
+      res.setHeader('Accept-Ranges', 'bytes')
+      if (!whole) res.setHeader('Content-Range', `bytes ${start}-${start + body.length - 1}/${size}`)
+      res.setHeader('Cache-Control', 'private, max-age=86400')
+      res.end(body)
+    },
+  },
 }
+
+const PACKAGE_ID = /^pkg_[A-Za-z0-9]+$/
+/** Must match CHUNK in src/lib/packages.js. */
+const PACKAGE_CHUNK = 3 * 1024 * 1024
+const safePackagePath = (path) => typeof path === 'string' && path.length > 0 && path.length < 600 && !path.split('/').includes('..') && !path.startsWith('/')
+const packagePart = (packageId, path, index) => `${packageId}_${sha256(path).slice(0, 32)}_${index}`
 
 /** The price of what is being bought, for this person, right now. */
 async function priced(c, db, { values: secrets }) {
@@ -695,7 +784,7 @@ export async function rpc(req, res) {
   const name = String(query.get('do') || body.do || '')
   const action = Object.hasOwn(actions, name) ? actions[name] : null
   if (!action) throw new HttpError(404, 'Unknown action.')
-  if (req.method !== 'POST' && name !== 'file.get') throw new HttpError(405, 'Use POST.')
+  if (req.method !== 'POST' && name !== 'file.get' && name !== 'scorm.file') throw new HttpError(405, 'Use POST.')
 
   const c = { req, res, store, secret, body, query, s: null }
   if (!action.public) {

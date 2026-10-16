@@ -10,7 +10,7 @@ import { COLLECTIONS, advanceSnapshot, diffState, emptyState, snapshotOf } from 
 import { applyOps, hasOps, react, tick } from '../lib/engine.js'
 import { currencyCode, paymentMethods, paypalLink, quote, settleOrder } from '../lib/commerce.js'
 import { allStats, rewardDiscount, scoreOf } from '../lib/gamification.js'
-import { courseIsComplete, isAdminRole, newEnrollment, pathProgress, termsVersion } from '../lib/rules.js'
+import { completeUnitIn, failAttemptIn, isAdminRole, newEnrollment, pathProgress, pendUnitIn, termsVersion } from '../lib/rules.js'
 import { setSharedFiles } from '../lib/fileStore'
 import { idleFor } from '../lib/activity'
 import { configureLocale, uid } from '../lib/utils'
@@ -509,6 +509,7 @@ export function DataProvider({ children }) {
       patch((prev) => ({
         users: prev.users.filter((x) => !ids.includes(x.id)),
         enrollments: prev.enrollments.filter((e) => !ids.includes(e.userId)),
+        registrations: (prev.registrations || []).filter((r) => !ids.includes(r.userId)),
       })),
     [patch],
   )
@@ -562,6 +563,8 @@ export function DataProvider({ children }) {
       patch((prev) => ({
         courses: prev.courses.filter((x) => !ids.includes(x.id)),
         enrollments: prev.enrollments.filter((e) => !ids.includes(e.courseId)),
+        registrations: (prev.registrations || []).filter((r) => !ids.includes(r.courseId)),
+        calendarEvents: (prev.calendarEvents || []).filter((ev) => !(ev.audience === 'course' && ids.includes(ev.targetId))),
       })),
     [patch],
   )
@@ -719,6 +722,8 @@ export function DataProvider({ children }) {
     (userId, courseId) =>
       patch((prev) => ({
         enrollments: prev.enrollments.filter((e) => !(e.userId === userId && e.courseId === courseId)),
+        // A seat held in a session goes back to the others.
+        registrations: (prev.registrations || []).filter((r) => !(r.userId === userId && r.courseId === courseId && r.attended == null)),
       })),
     [patch],
   )
@@ -737,6 +742,7 @@ export function DataProvider({ children }) {
                 timeSpentMin: 0,
                 attempts: {},
                 scores: {},
+                pendingUnits: [],
                 failedAt: null,
                 markedComplete: false,
               }
@@ -757,24 +763,9 @@ export function DataProvider({ children }) {
         const course = prev.courses.find((c) => c.id === courseId)
         const now = new Date().toISOString()
         return {
-          enrollments: prev.enrollments.map((e) => {
-            if (e.userId !== userId || e.courseId !== courseId) return e
-            const completedUnits = e.completedUnits.includes(unitId) ? e.completedUnits : [...e.completedUnits, unitId]
-            const scores =
-              extra.score != null ? { ...(e.scores || {}), [unitId]: Math.max(Number(e.scores?.[unitId]) || 0, extra.score) } : e.scores
-            const marks = Object.values(scores || {})
-            const done = courseIsComplete(course, completedUnits, e)
-            return {
-              ...e,
-              completedUnits,
-              ...(scores ? { scores } : {}),
-              ...(extra.attempt ? { attempts: { ...(e.attempts || {}), [unitId]: (Number(e.attempts?.[unitId]) || 0) + 1 } } : {}),
-              timeSpentMin: (e.timeSpentMin || 0) + (extra.minutes || 2),
-              score: marks.length ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : e.score,
-              status: done ? 'completed' : e.failedAt ? 'failed' : 'in_progress',
-              completedAt: done ? e.completedAt || now : null,
-            }
-          }),
+          enrollments: prev.enrollments.map((e) =>
+            e.userId === userId && e.courseId === courseId ? completeUnitIn(e, course, unitId, extra, now) : e,
+          ),
         }
       }),
     [patch],
@@ -784,23 +775,40 @@ export function DataProvider({ children }) {
   const failTest = useCallback(
     (userId, courseId, unitId) =>
       patch((prev) => {
-        const unit = prev.courses.find((c) => c.id === courseId)?.units.find((u) => u.id === unitId)
-        const max = Number(unit?.data?.maxAttempts) || 0
+        const course = prev.courses.find((c) => c.id === courseId)
         const now = new Date().toISOString()
         return {
-          enrollments: prev.enrollments.map((e) => {
-            if (e.userId !== userId || e.courseId !== courseId) return e
-            const used = (Number(e.attempts?.[unitId]) || 0) + 1
-            const out = max > 0 && used >= max && !e.completedUnits.includes(unitId) && e.status !== 'completed'
-            return {
-              ...e,
-              attempts: { ...(e.attempts || {}), [unitId]: used },
-              status: out ? 'failed' : e.status === 'not_started' ? 'in_progress' : e.status,
-              failedAt: out ? now : e.failedAt || null,
-            }
-          }),
+          enrollments: prev.enrollments.map((e) =>
+            e.userId === userId && e.courseId === courseId ? failAttemptIn(e, course, unitId, now) : e,
+          ),
         }
       }),
+    [patch],
+  )
+
+  /** What a SCORM / xAPI package reported, kept on the enrollment so the learner resumes on any device. */
+  const saveScorm = useCallback(
+    (userId, courseId, unitId, scoId, saved) =>
+      patch((prev) => ({
+        enrollments: prev.enrollments.map((e) =>
+          e.userId === userId && e.courseId === courseId
+            ? {
+                ...e,
+                status: e.status === 'not_started' ? 'in_progress' : e.status,
+                scorm: { ...(e.scorm || {}), [unitId]: { ...(e.scorm?.[unitId] || {}), [scoId]: saved } },
+              }
+            : e,
+        ),
+      })),
+    [patch],
+  )
+
+  /** A test with written answers is handed in; it waits for an instructor's grade. */
+  const pendTest = useCallback(
+    (userId, courseId, unitId) =>
+      patch((prev) => ({
+        enrollments: prev.enrollments.map((e) => (e.userId === userId && e.courseId === courseId ? pendUnitIn(e, unitId) : e)),
+      })),
     [patch],
   )
 
@@ -850,14 +858,24 @@ export function DataProvider({ children }) {
       ratings: make('ratings', 'rt'),
       skillResults: make('skillResults', 'sr'),
       outbox: make('outbox', 'ob'),
+      attempts: make('attempts', 'at'),
+      registrations: make('registrations', 'rg'),
+      calendarEvents: make('calendarEvents', 'ce'),
     }
   }, [patch])
 
+  /**
+   * An instructor's grade. What it does to the learner's course (a passed test, an
+   * assignment that needed a pass mark) is worked out by the engine. `returned`
+   * sends an assignment back so the learner can hand it in again.
+   */
   const gradeSubmission = useCallback(
-    (id, grade, feedback) =>
+    (id, grade, feedback, { returned = false } = {}) =>
       patch((prev) => ({
         submissions: prev.submissions.map((s) =>
-          s.id === id ? { ...s, grade, feedback, status: 'graded', gradedAt: new Date().toISOString() } : s,
+          s.id === id
+            ? { ...s, grade: returned ? null : grade, feedback, status: returned ? 'returned' : 'graded', gradedAt: new Date().toISOString() }
+            : s,
         ),
       })),
     [patch],
@@ -1053,6 +1071,8 @@ export function DataProvider({ children }) {
       resetProgress,
       completeUnit,
       failTest,
+      pendTest,
+      saveScorm,
       markCourseComplete,
       gradeSubmission,
       markMessageRead,
@@ -1096,6 +1116,8 @@ export function DataProvider({ children }) {
       resetProgress,
       completeUnit,
       failTest,
+      pendTest,
+      saveScorm,
       markCourseComplete,
       gradeSubmission,
       markMessageRead,

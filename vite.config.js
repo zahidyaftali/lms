@@ -11,6 +11,9 @@ import { pathToFileURL } from 'node:url'
 function portalApi() {
   const mount = (server) => {
     server.middlewares.use(async (req, res, next) => {
+      // Package files, as the /scorm rewrite in vercel.json does in production.
+      const pkg = req.url?.match(/^\/scorm\/([^?#]+)/)?.[1]
+      if (pkg) req.url = `/api/rpc?do=scorm.file&p=${encodeURIComponent(pkg)}`
       // /api/v1/users reaches the v1 route, as the rewrite in vercel.json does in production.
       const route = req.url?.match(/^\/api\/([\w-]+)(?:[/?]|$)/)?.[1]
       if (!route) return next()

@@ -100,15 +100,24 @@ export function Toggle({ checked, onChange, label, hint, disabled }) {
   )
 }
 
+/**
+ * A real checkbox under the drawn box, so the box, its label text and any row that
+ * wraps it in a <label> all toggle it, and it works from the keyboard.
+ */
 export function Checkbox({ checked, onChange, label, indeterminate, className }) {
   return (
-    <label className={cx('inline-flex items-start gap-2.5 cursor-pointer select-none', className)}>
+    <label className={cx('relative inline-flex items-start gap-2.5 cursor-pointer select-none', className)}>
+      <input
+        type="checkbox"
+        className="sr-only peer"
+        checked={!!checked}
+        onChange={(e) => onChange?.(e.target.checked)}
+        onClick={(e) => e.stopPropagation()}
+      />
       <span
-        onClick={(e) => {
-          e.preventDefault()
-          onChange?.(!checked)
-        }}
+        aria-hidden="true"
         className={cx(
+          'peer-focus-visible:ring-2 peer-focus-visible:ring-brand-700/40',
           'w-[18px] h-[18px] mt-0.5 shrink-0 rounded-[4px] border flex items-center justify-center transition',
           checked || indeterminate ? 'bg-brand-700 border-brand-700 text-white' : 'border-gray-400 bg-white',
         )}

@@ -6,7 +6,7 @@ import { toEmbedURL } from './media'
 import { putFile } from '../../lib/fileStore'
 import { publicCourseURL } from '../../lib/courseAccess'
 import CustomFieldInputs, { customFieldErrors } from '../users/CustomFieldInputs'
-import { COMPLETION_RULES } from '../../lib/rules.js'
+import { COMPLETION_RULES, contentUnits } from '../../lib/rules.js'
 import { sellsCourses } from '../../lib/commerce.js'
 import { currencySymbol, cx, fileSize, fullName } from '../../lib/utils'
 
@@ -41,6 +41,10 @@ function toDraft(course) {
     endDate: course.endDate || '',
     retainAccess: !!course.retainAccess,
     completionRule: course.completionRule || 'All units must be completed',
+    completionUnitIds: course.completionUnitIds || [],
+    completionPercent: course.completionPercent ? String(course.completionPercent) : '80',
+    unitOrder: course.unitOrder || 'portal',
+    prerequisiteIds: course.prerequisiteIds || [],
     certificateType: course.certificate ? course.certificateType || 'classic' : '',
     custom: course.custom || {},
   }
@@ -82,6 +86,10 @@ function fromDraft(d) {
     endDate: d.endDate,
     retainAccess: d.retainAccess,
     completionRule: d.completionRule,
+    completionUnitIds: d.completionUnitIds,
+    completionPercent: Math.min(100, Math.max(1, Math.round(Number(d.completionPercent) || 100))),
+    unitOrder: d.unitOrder,
+    prerequisiteIds: d.prerequisiteIds,
     certificate: !!d.certificateType,
     certificateType: d.certificateType || null,
     custom: d.custom,
@@ -100,6 +108,9 @@ function findProblems(d, takenCodes, customFields = []) {
   }
   if (d.timeMode === 'timeframe' && d.startDate && d.endDate && d.endDate < d.startDate) {
     problems.endDate = { tab: 'limits', message: 'The end date must be on or after the start date.' }
+  }
+  if (d.completionRule === 'Selected units must be completed' && !d.completionUnitIds.length) {
+    problems.completion = { tab: 'completion', message: 'Choose at least one unit that must be completed.' }
   }
   return problems
 }
@@ -120,6 +131,7 @@ function CourseOptionsDrawer({
   enrolledCount,
   takenCodes = [],
   settings,
+  courses = [],
   onClose,
   onSave,
 }) {
@@ -160,7 +172,7 @@ function CourseOptionsDrawer({
         {tab === 'info' && <InfoTab {...shared} categories={categories} instructors={instructors} />}
         {tab === 'availability' && <AvailabilityTab {...shared} enrolledCount={enrolledCount} />}
         {tab === 'limits' && <LimitsTab {...shared} />}
-        {tab === 'completion' && <CompletionTab {...shared} />}
+        {tab === 'completion' && <CompletionTab {...shared} courses={courses} />}
       </div>
     </Drawer>
   )
@@ -520,7 +532,9 @@ function LimitsTab({ draft, set, problems }) {
   )
 }
 
-function CompletionTab({ draft, set, course, settings }) {
+function CompletionTab({ draft, set, course, settings, courses, problems }) {
+  const units = contentUnits(course)
+  const portalOrder = settings?.courses?.unitNavigation === 'In order' ? 'in order' : 'in any order'
   return (
     <>
       <Section
@@ -531,7 +545,11 @@ function CompletionTab({ draft, set, course, settings }) {
             ? 'Nobody completes this course by themselves: an instructor marks each learner complete from the Enrolled users panel.'
             : draft.completionRule === 'Only the final test must be passed'
               ? 'Passing the last test in the course completes it, whatever else is left. A course with no test falls back to all units.'
-              : 'What counts as finishing this course.'
+              : draft.completionRule === 'Selected units must be completed'
+                ? 'The course is completed once every unit ticked below is completed; the others are optional.'
+                : draft.completionRule === 'A percentage of units must be completed'
+                  ? 'The course is completed once this share of its units is completed.'
+                  : 'What counts as finishing this course.'
         }
       >
         <div className="max-w-[320px]">
@@ -545,6 +563,59 @@ function CompletionTab({ draft, set, course, settings }) {
             ))}
           </Select>
         </div>
+        {draft.completionRule === 'Selected units must be completed' &&
+          (units.length ? (
+            <div className="mt-4">
+              <OptionList columns={1}>
+                {units.map((u) => (
+                  <Checkbox
+                    key={u.id}
+                    label={u.name}
+                    checked={draft.completionUnitIds.includes(u.id)}
+                    onChange={(v) => set({ completionUnitIds: v ? [...draft.completionUnitIds, u.id] : draft.completionUnitIds.filter((id) => id !== u.id) })}
+                  />
+                ))}
+              </OptionList>
+              <FieldError problem={problems.completion} />
+            </div>
+          ) : (
+            <Note>Add units to the course first.</Note>
+          ))}
+        {draft.completionRule === 'A percentage of units must be completed' && (
+          <div className="mt-4 flex items-center gap-2 max-w-[220px]">
+            <Input type="number" min="1" max="100" value={draft.completionPercent} aria-label="Percentage of units" onChange={(e) => set({ completionPercent: e.target.value })} />
+            <span className="text-[14px] text-ink-700 shrink-0">% of {units.length} units</span>
+          </div>
+        )}
+      </Section>
+
+      <Section icon="list" title="Unit order" hint="Whether learners must finish each unit before the next one opens.">
+        <div className="max-w-[320px]">
+          <Select value={draft.unitOrder} aria-label="Unit order" onChange={(e) => set({ unitOrder: e.target.value })}>
+            <option value="portal">Portal default ({portalOrder})</option>
+            <option value="sequential">In order</option>
+            <option value="free">Any order</option>
+          </Select>
+        </div>
+      </Section>
+
+      <Section icon="route" title="Prerequisites" hint="Courses a learner must complete before this one opens. They can still be enrolled; the course stays locked until then.">
+        {courses.filter((c) => c.id !== course.id).length === 0 ? (
+          <p className="hint">There are no other courses yet.</p>
+        ) : (
+          <OptionList columns={1}>
+            {courses
+              .filter((c) => c.id !== course.id && !(c.prerequisiteIds || []).includes(course.id))
+              .map((c) => (
+                <Checkbox
+                  key={c.id}
+                  label={c.name}
+                  checked={draft.prerequisiteIds.includes(c.id)}
+                  onChange={(v) => set({ prerequisiteIds: v ? [...draft.prerequisiteIds, c.id] : draft.prerequisiteIds.filter((id) => id !== c.id) })}
+                />
+              ))}
+          </OptionList>
+        )}
       </Section>
 
       <Section

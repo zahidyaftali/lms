@@ -13,14 +13,20 @@
 import { accessWindow } from './courseAccess.js'
 import {
   DAY,
+  assignmentCompletesOn,
+  calendarEventVisible,
   certificateCode,
   certificateExpired,
   certificateExpiry,
+  completeUnitIn,
   displayName,
+  failAttemptIn,
   fillTemplate,
+  iltCompletesOn,
   isAdminRole,
   newEnrollment,
   pathProgress,
+  regradeUnitIn,
 } from './rules.js'
 
 const HOUR = 3600000
@@ -34,7 +40,12 @@ export const NOTIFICATION_EVENTS = [
   { label: 'Assignment is submitted', type: 'assignment.submitted' },
   { label: 'Assignment is graded', type: 'assignment.graded' },
   { label: 'Certificate is issued', type: 'certificate.issued' },
+  { label: 'Assignment is returned for resubmission', type: 'assignment.returned' },
   { label: 'Instructor-led session is scheduled', type: 'session.scheduled' },
+  { label: 'User registers for a session', type: 'session.registered' },
+  { label: 'Instructor-led session starts within 24 hours', type: 'session.reminder' },
+  { label: 'User joins a group', type: 'group.joined' },
+  { label: 'Calendar event is added', type: 'calendar.added' },
   { label: 'User has not logged in for 14 days', type: 'user.idle' },
   { label: 'Certificate expires in 30 days', type: 'certificate.expiring' },
 ]
@@ -50,6 +61,10 @@ export const PLACEHOLDERS = [
   'grade',
   'session_name',
   'session_date',
+  'session_location',
+  'group_name',
+  'event_title',
+  'event_date',
   'certificate_code',
   'site_name',
   'login_url',
@@ -63,6 +78,9 @@ export const WEBHOOK_EVENTS = [
   { type: 'course.failed', label: 'User fails a course' },
   { type: 'certificate.issued', label: 'Certificate is issued' },
   { type: 'assignment.submitted', label: 'Assignment is submitted' },
+  { type: 'test.completed', label: 'Test is passed' },
+  { type: 'session.registered', label: 'User registers for a session' },
+  { type: 'group.joined', label: 'User joins a group' },
 ]
 
 /** Automations that follow something happening, and the event each one waits for. */
@@ -156,7 +174,8 @@ export function detectEvents(before, after) {
       if (e.status === 'completed' && was?.status !== 'completed') events.push({ type: 'course.completed', ...base, score: e.score })
       if (e.status === 'failed' && was?.status !== 'failed') events.push({ type: 'course.failed', ...base })
       for (const [unitId, count] of Object.entries(e.attempts || {})) {
-        if (count > (was?.attempts?.[unitId] || 0) && !(e.completedUnits || []).includes(unitId))
+        // An attempt with written answers is not a failure: it waits for an instructor's grade.
+        if (count > (was?.attempts?.[unitId] || 0) && !(e.completedUnits || []).includes(unitId) && !(e.pendingUnits || []).includes(unitId))
           events.push({ type: 'test.failed', ...base, unitId })
       }
     }
@@ -170,7 +189,43 @@ export function detectEvents(before, after) {
       const base = { userId: s.userId, courseId: s.courseId, unitId: s.unitId, submissionId: s.id }
       if (!was && s.type === 'assignment') events.push({ type: 'assignment.submitted', ...base })
       if (s.status === 'graded' && was && was.status !== 'graded') events.push({ type: 'assignment.graded', ...base, grade: s.grade })
+      // A first grade, or a grade changed afterwards, carries through to the learner's course.
+      if (s.status === 'graded' && was && (was.status !== 'graded' || was.grade !== s.grade)) events.push({ type: 'submission.graded', ...base, grade: s.grade })
+      if (s.status === 'returned' && was && was.status !== 'returned') events.push({ type: 'assignment.returned', ...base })
     }
+  }
+
+  if (before.registrations !== after.registrations) {
+    const old = byId(before.registrations)
+    for (const r of after.registrations || []) {
+      const was = old.get(r.id)
+      if (was === r) continue
+      const base = { userId: r.userId, courseId: r.courseId, unitId: r.unitId, sessionId: r.sessionId, registrationId: r.id }
+      if (!was) events.push({ type: 'session.registered', ...base })
+      if (r.attended === true && was?.attended !== true) events.push({ type: 'session.attended', ...base })
+    }
+  }
+
+  if (before.attempts !== after.attempts) {
+    const old = byId(before.attempts)
+    for (const a of after.attempts || []) {
+      if (!old.has(a.id) && a.kind === 'test' && a.passed && !a.pending)
+        events.push({ type: 'test.completed', userId: a.userId, courseId: a.courseId, unitId: a.unitId, score: a.score })
+    }
+  }
+
+  if (before.users !== after.users) {
+    const old = byId(before.users)
+    for (const u of after.users || []) {
+      const was = old.get(u.id)
+      if (was === u) continue
+      for (const groupId of u.groupIds || []) if (!(was?.groupIds || []).includes(groupId)) events.push({ type: 'group.joined', userId: u.id, groupId })
+    }
+  }
+
+  if (before.calendarEvents !== after.calendarEvents) {
+    const old = byId(before.calendarEvents)
+    for (const ev of after.calendarEvents || []) if (!old.has(ev.id)) events.push({ type: 'calendar.added', eventId: ev.id, userId: ev.createdBy })
   }
 
   if (before.certificates !== after.certificates) {
@@ -200,6 +255,13 @@ export function detectEvents(before, after) {
 }
 
 /* ------------------------------------------------------------------ actions */
+
+/** Joining a group enrolls the member in the group's courses. */
+function joinGroupCourses(work, ev) {
+  const group = work.find('groups', ev.groupId)
+  const added = assign(work, ev.userId, group?.courseIds || [], { groupId: ev.groupId })
+  if (added.length) work.log('user', `was enrolled in ${added.length} course${added.length === 1 ? '' : 's'} of the group ${group.name}`, ev.userId)
+}
 
 function assign(work, userId, courseIds, extra = {}) {
   const user = work.find('users', userId)
@@ -313,6 +375,9 @@ function templateValues(work, ev) {
   const path = ev.pathId ? work.find('learningPaths', ev.pathId) : null
   const unit = course?.units?.find((u) => u.id === ev.unitId)
   const certificate = ev.certificateId ? work.find('certificates', ev.certificateId) : null
+  const session = ev.session || (unit?.data?.sessions || []).find((s) => s.id === ev.sessionId) || null
+  const group = ev.groupId ? work.find('groups', ev.groupId) : null
+  const event = ev.eventId ? work.find('calendarEvents', ev.eventId) : null
   const origin = work.ctx.origin || ''
   return {
     user_name: user ? displayName(user) : '',
@@ -321,8 +386,12 @@ function templateValues(work, ev) {
     course_name: course?.name || path?.name || '',
     unit_name: unit?.name || '',
     grade: ev.grade != null ? `${ev.grade}%` : ev.score != null ? `${ev.score}%` : '',
-    session_name: ev.session?.name || unit?.name || '',
-    session_date: ev.session?.start ? new Date(ev.session.start).toLocaleString('en-US') : '',
+    session_name: session?.name || unit?.name || '',
+    session_date: session?.start ? new Date(session.start).toLocaleString('en-US') : '',
+    session_location: session?.location || (session?.meetingUrl ? 'Online' : ''),
+    group_name: group?.name || '',
+    event_title: event?.title || '',
+    event_date: event?.start ? new Date(event.start).toLocaleString('en-US') : '',
     certificate_code: certificate?.code || '',
     site_name: settings.siteName || '',
     login_url: `${origin}/login`,
@@ -337,7 +406,12 @@ const DEFAULT_BODY = {
   'assignment.submitted': '{user_name} submitted {unit_name} in {course_name}. It is waiting for review.',
   'assignment.graded': 'Hello {user_first_name},\n\n{unit_name} in {course_name} has been graded: {grade}.',
   'certificate.issued': 'Hello {user_first_name},\n\nYour certificate for {course_name} is ready ({certificate_code}).',
+  'assignment.returned': 'Hello {user_first_name},\n\n{unit_name} in {course_name} was returned to you. Read the feedback and hand it in again.',
   'session.scheduled': 'Hello {user_first_name},\n\n{session_name} for {course_name} is scheduled for {session_date}.',
+  'session.registered': '{user_name} registered for {session_name} ({course_name}) on {session_date}.',
+  'session.reminder': 'Hello {user_first_name},\n\nA reminder: {session_name} for {course_name} starts {session_date}. {session_location}',
+  'group.joined': '{user_name} joined the group {group_name}.',
+  'calendar.added': 'Hello {user_first_name},\n\n{event_title} has been added to the calendar for {event_date}. Sign in at {login_url} to see it.',
   'user.idle': 'Hello {user_first_name},\n\nIt has been a while since you signed in to {site_name}. Pick up where you left off at {login_url}.',
   'certificate.expiring': 'Hello {user_first_name},\n\nYour certificate for {course_name} ({certificate_code}) expires within 30 days.',
 }
@@ -367,6 +441,11 @@ function deliver(work, to, subject, body, meta = {}) {
 function recipientsOf(work, rule, ev) {
   const users = work.list('users').filter((u) => u.active)
   const course = work.find('courses', ev.courseId)
+  // A calendar event goes to the people who can see it ("The user" means them here).
+  if (ev.type === 'calendar.added' && rule.recipient === 'The user') {
+    const event = work.find('calendarEvents', ev.eventId)
+    return event ? users.filter((u) => u.id !== event.createdBy && calendarEventVisible(event, u, work.state)) : []
+  }
   switch (rule.recipient) {
     case "The user's instructor":
       return users.filter((u) => (course?.instructorIds || []).includes(u.id))
@@ -470,12 +549,67 @@ function welcome(work, ev) {
   })
 }
 
+/** The enrollment of `ev.userId` in `ev.courseId`, with the course and the unit `ev.unitId`. */
+function placeOf(work, ev) {
+  const course = work.find('courses', ev.courseId)
+  const unit = (course?.units || []).find((u) => u.id === ev.unitId)
+  const enrollment = work.list('enrollments').find((e) => e.userId === ev.userId && e.courseId === ev.courseId)
+  return { course, unit, enrollment }
+}
+
+/** An instructor's grade carries through: a passed test or assignment completes its unit, a failed test uses an attempt. */
+function applyGrade(work, ev) {
+  const { course, unit, enrollment } = placeOf(work, ev)
+  const submission = work.find('submissions', ev.submissionId)
+  if (!course || !unit || !enrollment || !submission) return
+  const grade = Math.max(0, Math.min(100, Number(submission.grade) || 0))
+  const done = (enrollment.completedUnits || []).includes(unit.id)
+
+  if (submission.type === 'test') {
+    const passed = grade >= (Number(unit.data?.passingScore) || 0)
+    const attempt = submission.attemptId ? work.find('attempts', submission.attemptId) : null
+    if (attempt) work.put('attempts', { ...attempt, score: grade, passed, pending: false, gradedAt: work.iso })
+    if (passed) work.put('enrollments', completeUnitIn(enrollment, course, unit.id, { score: grade, minutes: 0 }, work.iso))
+    else if (done) work.put('enrollments', regradeUnitIn(enrollment, unit.id, grade))
+    else if ((enrollment.pendingUnits || []).includes(unit.id)) {
+      work.put('enrollments', failAttemptIn(enrollment, course, unit.id, work.iso, { count: false }))
+      notify(work, { type: 'test.failed', userId: ev.userId, courseId: ev.courseId, unitId: unit.id })
+    }
+    return
+  }
+
+  if (assignmentCompletesOn(unit) === 'pass') {
+    const passMark = Number(unit.data?.passScore) || 0
+    if (grade >= passMark && !done) work.put('enrollments', completeUnitIn(enrollment, course, unit.id, { score: grade, minutes: 0 }, work.iso))
+    else if (done) work.put('enrollments', regradeUnitIn(enrollment, unit.id, grade))
+    // Below the pass mark the learner may hand it in again.
+    else work.put('submissions', { ...submission, status: 'returned', grade })
+  } else if (done) work.put('enrollments', regradeUnitIn(enrollment, unit.id, grade))
+  else work.put('enrollments', completeUnitIn(enrollment, course, unit.id, { score: grade, minutes: 0 }, work.iso))
+}
+
+/** Attendance marked by an instructor completes an instructor-led unit. */
+function applyAttendance(work, ev) {
+  const { course, unit, enrollment } = placeOf(work, ev)
+  if (!course || !unit || !enrollment || (enrollment.completedUnits || []).includes(unit.id)) return
+  work.put('enrollments', completeUnitIn(enrollment, course, unit.id, { minutes: 0 }, work.iso))
+}
+
 function handle(work, ev) {
   if (ev.type === 'course.completed') {
     issueCertificate(work, ev)
     advancePaths(work, ev)
   }
   if (ev.type === 'user.created') welcome(work, ev)
+  if (ev.type === 'submission.graded') return applyGrade(work, ev)
+  if (ev.type === 'session.attended') return applyAttendance(work, ev)
+  if (ev.type === 'session.registered') {
+    const { course, unit, enrollment } = placeOf(work, ev)
+    // Units that finish on registration are done as soon as a seat is taken.
+    if (course && unit && enrollment && iltCompletesOn(unit) === 'registration' && !(enrollment.completedUnits || []).includes(unit.id))
+      work.put('enrollments', completeUnitIn(enrollment, course, unit.id, { minutes: 0 }, work.iso))
+  }
+  if (ev.type === 'group.joined') joinGroupCourses(work, ev)
 
   for (const a of work.list('automations')) {
     if (!matches(a, ev)) continue
@@ -582,6 +716,18 @@ function timedNotifications(work) {
   const { now } = work.ctx
   const settings = work.state.settings || {}
   const active = (label) => work.list('notifications').some((n) => n.active && n.event === label)
+
+  if (active('Instructor-led session starts within 24 hours')) {
+    for (const r of work.list('registrations')) {
+      if (r.attended != null) continue
+      const unit = (work.find('courses', r.courseId)?.units || []).find((u) => u.id === r.unitId)
+      const session = (unit?.data?.sessions || []).find((s) => s.id === r.sessionId)
+      const starts = session?.start ? new Date(session.start).getTime() : NaN
+      if (!(starts > now && starts - now <= DAY)) continue
+      if (once(work, `remind_${r.id}_${starts.toString(36)}`))
+        notify(work, { type: 'session.reminder', userId: r.userId, courseId: r.courseId, unitId: r.unitId, sessionId: r.sessionId })
+    }
+  }
 
   if (active('User has not logged in for 14 days')) {
     for (const u of work.list('users')) {

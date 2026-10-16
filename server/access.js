@@ -14,7 +14,17 @@
 import { ADMIN_SETTINGS, publicEcommerce, withSettingDefaults } from '../src/lib/settingsDefaults.js'
 import { leaderboard } from '../src/lib/gamification.js'
 import { sellsCourses } from '../src/lib/commerce.js'
-import { badIpRules, certificateExpired, displayName, ipAllowed, needsTerms, passwordExpired, termsVersion } from '../src/lib/rules.js'
+import {
+  badIpRules,
+  calendarEventVisible,
+  certificateExpired,
+  displayName,
+  ipAllowed,
+  needsTerms,
+  passwordExpired,
+  sessionSeats,
+  termsVersion,
+} from '../src/lib/rules.js'
 
 export const COLLECTIONS = [
   'userTypes',
@@ -39,6 +49,9 @@ export const COLLECTIONS = [
   'orders',
   'jobs',
   'outbox',
+  'attempts',
+  'registrations',
+  'calendarEvents',
 ]
 
 /** Collections only the server writes. */
@@ -50,7 +63,8 @@ const isInstructor = (u) => u?.role === 'instructor'
 const SELF_FIELDS = ['firstName', 'lastName', 'bio', 'phone', 'avatar']
 /** Fields the server keeps on a user record itself; an administrator's browser cannot set them. */
 const SERVER_USER_FIELDS = ['loginCount', 'mustChangePassword', 'passwordChangedAt', 'termsAccepted', 'termsAcceptedAt', 'emailVerified', 'subscribedUntil', 'trialUsed']
-const PROGRESS_FIELDS = ['completedUnits', 'status', 'score', 'completedAt', 'timeSpentMin', 'attempts', 'scores', 'failedAt']
+const PROGRESS_FIELDS = ['completedUnits', 'status', 'score', 'completedAt', 'timeSpentMin', 'attempts', 'scores', 'failedAt', 'pendingUnits', 'scorm']
+const ATTEMPT_FIELDS = ['id', 'userId', 'courseId', 'unitId', 'kind', 'answers', 'questionIds', 'score', 'passed', 'pending', 'at', 'seconds']
 const GRADE_FIELDS = ['status', 'grade', 'feedback', 'gradedAt']
 
 const pick = (obj, keys) => Object.fromEntries(keys.filter((k) => k in obj).map((k) => [k, obj[k]]))
@@ -134,6 +148,11 @@ export function viewFor(db, me) {
   }
 
   const mine = (list) => list.filter((r) => r.userId === me.id)
+  const state = stateOf(db)
+  const calendarEvents = c.calendarEvents.filter((ev) => calendarEventVisible(ev, me, state))
+  // Answers to an anonymous survey reach staff without the name of whoever gave them.
+  const anonymous = new Set(c.courses.flatMap((course) => (course.units || []).filter((u) => u.type === 'survey' && u.data?.anonymous).map((u) => u.id)))
+  const attempts = c.attempts.map((a) => (a.kind === 'survey' && anonymous.has(a.unitId) && a.userId !== me.id ? { ...a, userId: null } : a))
   const skillsOn = full.skills.enabled && full.skills.learners
   const myCourses = new Set(mine(c.enrollments).map((e) => e.courseId))
 
@@ -158,6 +177,7 @@ export function viewFor(db, me) {
         : [],
     automations: admin ? c.automations : [],
     ratings: c.ratings,
+    calendarEvents,
     jobs: admin ? c.jobs : [],
     outbox: admin ? c.outbox : [],
   }
@@ -177,6 +197,8 @@ export function viewFor(db, me) {
       discussions: c.discussions,
       skillResults: c.skillResults,
       orders: admin ? c.orders : mine(c.orders),
+      attempts,
+      registrations: c.registrations,
       auditLog: admin ? db.auditLog : [],
     }
   }
@@ -186,6 +208,9 @@ export function viewFor(db, me) {
   const posters = new Set(discussions.map((p) => p.userId))
   const enrollmentCounts = {}
   c.enrollments.forEach((e) => (enrollmentCounts[e.courseId] = (enrollmentCounts[e.courseId] || 0) + 1))
+  // Seats other learners hold in each instructor-led session, without saying whose. The browser adds the learner's own.
+  const sessionCounts = {}
+  c.registrations.filter((r) => r.userId !== me.id).forEach((r) => (sessionCounts[r.sessionId] = (sessionCounts[r.sessionId] || 0) + 1))
   const g = full.gamification
   return {
     ...base,
@@ -208,7 +233,10 @@ export function viewFor(db, me) {
     discussions,
     skillResults: mine(c.skillResults),
     orders: mine(c.orders),
+    attempts: mine(c.attempts),
+    registrations: mine(c.registrations),
     enrollmentCounts,
+    sessionCounts,
     leaderboard: g.enabled && g.leaderboard.enabled ? leaderboard(stateOf(db), g, (u) => displayName(u, full.users.nameFormat)).slice(0, 50) : [],
   }
 }
@@ -332,6 +360,35 @@ export function authorize(db, me, payload, { ip = '' } = {}) {
           else refuse(coll, record.id, 'not your rating')
           break
 
+        case 'attempts':
+          if (!existing && record.userId === me.id && enrolledIn(record.courseId)) keep(coll, pick(record, ATTEMPT_FIELDS))
+          else refuse(coll, record.id, 'not your attempt')
+          break
+
+        case 'registrations': {
+          if (isInstructor(me) && teaches(record.courseId) && (!existing || teaches(existing.courseId))) {
+            keep(coll, record)
+            break
+          }
+          const unit = (index.courses.get(record.courseId)?.units || []).find((u) => u.id === record.unitId && u.type === 'ilt')
+          const session = (unit?.data?.sessions || []).find((s) => s.id === record.sessionId)
+          const taken = db.collections.registrations.filter((r) => r.sessionId === record.sessionId).length
+          const holding = db.collections.registrations.some((r) => r.userId === me.id && r.unitId === record.unitId && r.attended !== false)
+          if (existing || record.userId !== me.id || !enrolledIn(record.courseId) || !session) refuse(coll, record.id, 'not your registration')
+          else if (holding) refuse(coll, record.id, 'You already hold a seat in a session of this unit.', true)
+          else if (sessionSeats(session, taken).full) refuse(coll, record.id, 'That session is full. Choose another one.', true)
+          else if (session.start && new Date(session.start).getTime() < Date.now()) refuse(coll, record.id, 'That session has already started.', true)
+          else keep(coll, { ...pick(record, ['id', 'userId', 'courseId', 'unitId', 'sessionId', 'at']), attended: null })
+          break
+        }
+
+        case 'calendarEvents':
+          // Instructors add events for the courses they teach; everything else is for administrators.
+          if (isInstructor(me) && record.audience === 'course' && teaches(record.targetId) && (!existing || existing.createdBy === me.id))
+            keep(coll, { ...record, createdBy: existing?.createdBy || me.id })
+          else refuse(coll, record.id, 'not your event')
+          break
+
         case 'skillResults':
           if (!existing && record.userId === me.id && settings.skills.enabled && settings.skills.learners && index.skills.has(record.skillId))
             keep(coll, record)
@@ -356,7 +413,11 @@ export function authorize(db, me, payload, { ip = '' } = {}) {
         (isInstructor(me) && coll === 'discussions' && teaches(existing.courseId)) ||
         ((coll === 'discussions' || coll === 'ratings') && existing.userId === me.id) ||
         // Staff browsers trim the activity log to its latest entries.
-        (isInstructor(me) && coll === 'events')
+        (isInstructor(me) && coll === 'events') ||
+        (isInstructor(me) && coll === 'registrations' && teaches(existing.courseId)) ||
+        (isInstructor(me) && coll === 'calendarEvents' && existing.createdBy === me.id) ||
+        // A learner gives back a seat they have not used yet.
+        (coll === 'registrations' && existing.userId === me.id && existing.attended == null)
       if (allowed && !(coll === 'users' && id === me.id)) out.deletes.push({ collection: coll, id })
       else if (coll !== 'events') refuse(coll, id, 'cannot delete')
     }

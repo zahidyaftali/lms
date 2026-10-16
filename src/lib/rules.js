@@ -56,6 +56,8 @@ export const contentUnits = (course) => (course?.units || []).filter((u) => u.ty
 
 export const COMPLETION_RULES = [
   'All units must be completed',
+  'Selected units must be completed',
+  'A percentage of units must be completed',
   'Only the final test must be passed',
   'Instructor marks the course complete',
 ]
@@ -65,13 +67,39 @@ export function courseIsComplete(course, completedUnits = [], enrollment = null)
   const units = contentUnits(course)
   if (!units.length) return false
   if (enrollment?.markedComplete) return true
-  if (course.completionRule === 'Instructor marks the course complete') return false
-  if (course.completionRule === 'Only the final test must be passed') {
-    const tests = units.filter((u) => u.type === 'test')
-    // A course with no test falls back to "all units", or it could never be completed.
-    if (tests.length) return completedUnits.includes(tests[tests.length - 1].id)
+  // A test or session still waiting for an instructor is not finished yet.
+  const done = (id) => completedUnits.includes(id)
+  switch (course.completionRule) {
+    case 'Instructor marks the course complete':
+      return false
+    case 'Only the final test must be passed': {
+      const tests = units.filter((u) => u.type === 'test')
+      // A course with no test falls back to "all units", or it could never be completed.
+      if (tests.length) return done(tests[tests.length - 1].id)
+      break
+    }
+    case 'Selected units must be completed': {
+      const picked = units.filter((u) => (course.completionUnitIds || []).includes(u.id))
+      if (picked.length) return picked.every((u) => done(u.id))
+      break
+    }
+    case 'A percentage of units must be completed': {
+      const percent = Math.min(100, Math.max(1, Number(course.completionPercent) || 100))
+      return units.filter((u) => done(u.id)).length >= Math.ceil((units.length * percent) / 100)
+    }
+    default:
   }
-  return units.every((u) => completedUnits.includes(u.id))
+  return units.every((u) => done(u.id))
+}
+
+/**
+ * Course options → Completion → Unit order: "In order", "Any order", or the portal's
+ * own setting (Account & Settings → Courses → Unit navigation).
+ */
+export function sequentialUnits(course, settings) {
+  if (course?.unitOrder === 'sequential') return true
+  if (course?.unitOrder === 'free') return false
+  return settings?.courses?.unitNavigation === 'In order'
 }
 
 /** With units taken in order, a unit opens once every unit before it is completed. */
@@ -88,6 +116,187 @@ export function testAttemptsLeft(unit, enrollment) {
   const max = Number(unit?.data?.maxAttempts) || 0
   if (!max) return Infinity
   return Math.max(0, max - (Number(enrollment?.attempts?.[unit.id]) || 0))
+}
+
+/**
+ * Courses that must be completed before this one opens (Course options → Completion → Prerequisites).
+ * Returns { met, missing: [courseId] }.
+ */
+export function prerequisitesMet(course, userId, enrollments = []) {
+  const needed = (course?.prerequisiteIds || []).filter((id) => id && id !== course.id)
+  const missing = needed.filter((id) => !enrollments.some((e) => e.userId === userId && e.courseId === id && e.status === 'completed'))
+  return { met: missing.length === 0, missing }
+}
+
+const averageOf = (scores) => {
+  const marks = Object.values(scores || {}).map(Number).filter((n) => Number.isFinite(n))
+  return marks.length ? Math.round(marks.reduce((a, b) => a + b, 0) / marks.length) : null
+}
+
+/**
+ * An enrollment once a unit is completed, rolled forward under the course's completion rule.
+ * The browser (a learner finishing a unit) and the engine (an instructor's grade or attendance)
+ * both go through here. `extra`: { score, attempt, minutes }.
+ */
+export function completeUnitIn(enrollment, course, unitId, extra = {}, now = new Date().toISOString()) {
+  const e = enrollment
+  const completedUnits = (e.completedUnits || []).includes(unitId) ? e.completedUnits || [] : [...(e.completedUnits || []), unitId]
+  const scores = extra.score != null ? { ...(e.scores || {}), [unitId]: Math.max(Number(e.scores?.[unitId]) || 0, Number(extra.score) || 0) } : e.scores
+  const pendingUnits = (e.pendingUnits || []).filter((id) => id !== unitId)
+  const done = courseIsComplete(course, completedUnits, e)
+  return {
+    ...e,
+    completedUnits,
+    ...(scores ? { scores } : {}),
+    ...(e.pendingUnits ? { pendingUnits } : {}),
+    ...(extra.attempt ? { attempts: { ...(e.attempts || {}), [unitId]: (Number(e.attempts?.[unitId]) || 0) + 1 } } : {}),
+    timeSpentMin: (Number(e.timeSpentMin) || 0) + (extra.minutes ?? 2),
+    score: averageOf(scores) ?? e.score ?? null,
+    status: done ? 'completed' : e.failedAt ? 'failed' : 'in_progress',
+    completedAt: done ? e.completedAt || now : null,
+  }
+}
+
+/** A grade given to a unit that is already completed (an assignment marked after it was handed in). */
+export function regradeUnitIn(enrollment, unitId, score) {
+  const scores = { ...(enrollment.scores || {}), [unitId]: Number(score) || 0 }
+  return { ...enrollment, scores, score: averageOf(scores) }
+}
+
+/**
+ * A test attempt that did not pass. `count: false` when the attempt was already counted
+ * (written answers that waited for grading). Using up the attempts a test allows fails the course.
+ */
+export function failAttemptIn(enrollment, course, unitId, now = new Date().toISOString(), { count = true } = {}) {
+  const e = enrollment
+  const unit = (course?.units || []).find((u) => u.id === unitId)
+  const max = Number(unit?.data?.maxAttempts) || 0
+  const used = (Number(e.attempts?.[unitId]) || 0) + (count ? 1 : 0)
+  const out = max > 0 && used >= max && !(e.completedUnits || []).includes(unitId) && e.status !== 'completed'
+  return {
+    ...e,
+    attempts: { ...(e.attempts || {}), [unitId]: used },
+    ...(e.pendingUnits ? { pendingUnits: e.pendingUnits.filter((id) => id !== unitId) } : {}),
+    status: out ? 'failed' : e.status === 'not_started' ? 'in_progress' : e.status,
+    failedAt: out ? now : e.failedAt || null,
+  }
+}
+
+/** A test with written answers is handed in: the attempt counts and the unit waits for an instructor. */
+export function pendUnitIn(enrollment, unitId) {
+  const e = enrollment
+  return {
+    ...e,
+    attempts: { ...(e.attempts || {}), [unitId]: (Number(e.attempts?.[unitId]) || 0) + 1 },
+    pendingUnits: [...new Set([...(e.pendingUnits || []), unitId])],
+    status: e.status === 'not_started' ? 'in_progress' : e.status,
+  }
+}
+
+/* ---------------------------------------------------------- course activities */
+
+/** When an assignment is due for a learner: `dueDays` after they enrolled. */
+export function assignmentDue(unit, enrollment) {
+  const days = Number(unit?.data?.dueDays) || 0
+  if (!days || !enrollment?.enrolledAt) return null
+  return new Date(enrollment.enrolledAt).getTime() + days * DAY
+}
+
+/** Instructor-led training: the sessions of a unit with how many seats are taken. */
+export function sessionSeats(session, takenCount) {
+  const capacity = Number(session?.capacity) || 0
+  return { capacity, taken: takenCount, left: capacity > 0 ? Math.max(0, capacity - takenCount) : Infinity, full: capacity > 0 && takenCount >= capacity }
+}
+
+/** What finishes an instructor-led unit: an instructor marking attendance (the default) or registering. */
+export const iltCompletesOn = (unit) => (unit?.data?.completeOn === 'registration' ? 'registration' : 'attendance')
+
+/** What finishes an assignment unit: handing it in (the default) or a passing grade. */
+export const assignmentCompletesOn = (unit) => (unit?.data?.completeOn === 'pass' ? 'pass' : 'submit')
+
+/**
+ * Marks a test's answers. Questions: single | truefalse | multiple | gap | ordering | text.
+ * Written (text) answers are not marked here; `pending` says an instructor must grade them.
+ * Returns { score, earned, possible, pending, results: { [questionId]: true | false | null } }.
+ */
+export function markTest(questions, answers = {}) {
+  let earned = 0
+  let possible = 0
+  let pending = false
+  const results = {}
+  for (const q of questions || []) {
+    const points = Number(q.points ?? 1) || 0
+    const given = answers[q.id]
+    if (q.type === 'text') {
+      pending = true
+      results[q.id] = null
+      continue
+    }
+    possible += points
+    let right = false
+    if (q.type === 'gap') {
+      const accepted = String(q.answer || '')
+        .split('|')
+        .map((a) => a.trim().toLowerCase())
+        .filter(Boolean)
+      right = accepted.includes(String(given || '').trim().toLowerCase().replace(/\s+/g, ' '))
+    } else if (q.type === 'ordering') {
+      const order = (q.options || []).map((o) => o.id)
+      right = Array.isArray(given) && given.length === order.length && given.every((id, i) => id === order[i])
+    } else {
+      const correct = (q.options || []).filter((o) => o.correct).map((o) => o.id)
+      const ids = Array.isArray(given) ? given : given ? [given] : []
+      right = correct.length === ids.length && correct.every((id) => ids.includes(id))
+    }
+    results[q.id] = right
+    if (right) earned += points
+  }
+  return { score: possible ? Math.round((earned / possible) * 100) : 100, earned, possible, pending, results }
+}
+
+/* ----------------------------------------------------------------- calendar */
+
+export const EVENT_AUDIENCES = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'instructors', label: 'Instructors and administrators' },
+  { value: 'course', label: 'A course (its learners and instructors)' },
+  { value: 'group', label: 'A group' },
+  { value: 'branch', label: 'A branch' },
+]
+
+/** Whether a calendar event someone added is shown to `user`. */
+export function calendarEventVisible(ev, user, state) {
+  if (!user || !ev) return false
+  if (isAdminRole(user) || ev.createdBy === user.id) return true
+  switch (ev.audience) {
+    case 'everyone':
+      return true
+    case 'instructors':
+      return user.role === 'instructor'
+    case 'course':
+      return (
+        (state.enrollments || []).some((e) => e.userId === user.id && e.courseId === ev.targetId) ||
+        ((state.courses || []).find((c) => c.id === ev.targetId)?.instructorIds || []).includes(user.id)
+      )
+    case 'group':
+      return (user.groupIds || []).includes(ev.targetId)
+    case 'branch':
+      return !!user.branchId && user.branchId === ev.targetId
+    default:
+      return false
+  }
+}
+
+/** The questions one attempt draws: all of them, or `poolSize` picked at random. */
+export function drawQuestions(questions, poolSize, random = Math.random) {
+  const all = [...(questions || [])]
+  const size = Math.floor(Number(poolSize) || 0)
+  if (!size || size >= all.length) return all
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[all[i], all[j]] = [all[j], all[i]]
+  }
+  return all.slice(0, size)
 }
 
 export const STATUS_LABEL = {

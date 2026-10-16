@@ -20,7 +20,11 @@ import Discussion from '../../components/course/Discussion'
 import { statusLabel, statusTone } from '../../lib/rules.js'
 import IntroVideo, { hasIntroVideo } from '../../components/course/IntroVideo'
 import UnitEditor from '../../components/course/UnitEditor'
+import UnitResults from '../../components/course/UnitResults'
 import { DEFAULT_UNIT_DATA, unitIcon, unitLabel } from '../../components/course/unitTypes'
+import { putFile } from '../../lib/fileStore'
+import { storePackage } from '../../lib/packages'
+import { linkSource, resolveUnit } from '../../lib/courseAccess'
 import { useData, useSelectors } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -60,7 +64,7 @@ export default function CourseBuilder() {
   const { courseId } = useParams()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { courses, users, enrollments, categories, settings, actions } = useData()
+  const { courses, users, enrollments, categories, settings, backend, actions } = useData()
   const { progressOf } = useSelectors()
   const { user, view } = useAuth()
   const toast = useToast()
@@ -74,6 +78,9 @@ export default function CourseBuilder() {
   const [panel, setPanel] = useState(params.get('panel') || null)
   const [confirm, setConfirm] = useState(null)
   const [cloneFrom, setCloneFrom] = useState(null)
+  const [results, setResults] = useState(null)
+  const [dropping, setDropping] = useState(false)
+  const [uploading, setUploading] = useState('')
   const addRef = useRef(null)
 
   useEffect(() => {
@@ -130,6 +137,57 @@ export default function CourseBuilder() {
     if (type !== 'section') setEditingUnit(unit)
   }
 
+  /** Files dropped on the builder become units: video, audio, a document, or a SCORM / xAPI package. */
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || [])
+    if (!files.length || !canEdit) return
+    let added = 0
+    for (const file of files) {
+      const name = file.name.replace(/\.[^.]+$/, '')
+      setUploading(`Adding ${file.name}…`)
+      try {
+        if (/\.zip$/i.test(file.name)) {
+          const stored = await storePackage(file, { shared: backend.mode === 'server', onProgress: (p) => setUploading(`Adding ${file.name}… ${p}%`) })
+          actions.addUnit(course.id, { type: 'scorm', name: stored.title || name, data: { ...DEFAULT_UNIT_DATA.scorm, ...stored } })
+        } else {
+          const stored = await putFile(file)
+          const kind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'document'
+          actions.addUnit(course.id, {
+            type: kind,
+            name,
+            data:
+              kind === 'document'
+                ? { ...DEFAULT_UNIT_DATA.document, fileId: stored.id, fileName: stored.name, fileType: stored.type, fileSize: stored.size, localOnly: !!stored.local }
+                : { ...DEFAULT_UNIT_DATA[kind], source: 'file', fileId: stored.id, fileName: stored.name, fileSize: stored.size, localOnly: !!stored.local },
+          })
+        }
+        added += 1
+      } catch (err) {
+        toast(`${file.name}: ${err.message}`, 'error')
+      }
+    }
+    setUploading('')
+    if (added) toast(`${added} unit${added === 1 ? '' : 's'} added from your file${added === 1 ? '' : 's'}.`)
+  }
+
+  const dropZone = canEdit
+    ? {
+        onDragOver: (e) => {
+          if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return
+          e.preventDefault()
+          setDropping(true)
+        },
+        onDragLeave: (e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false)
+        },
+        onDrop: (e) => {
+          e.preventDefault()
+          setDropping(false)
+          addFiles(e.dataTransfer.files)
+        },
+      }
+    : {}
+
   function addStudioUnit() {
     setAddOpen(false)
     setSubmenu(null)
@@ -145,7 +203,16 @@ export default function CourseBuilder() {
   }
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col lg:flex-row bg-white">
+    <div className="min-h-screen lg:h-screen flex flex-col lg:flex-row bg-white relative" {...dropZone}>
+      {(dropping || uploading) && (
+        <div className="fixed inset-0 z-50 bg-navy-900/40 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-card shadow-pop px-8 py-6 text-center">
+            <Icon name="upload" className="w-8 h-8 mx-auto text-brand-700 mb-2" />
+            <p className="text-[15px] font-semibold">{uploading || 'Drop files to add them as units'}</p>
+            {!uploading && <p className="hint mt-1">Video, audio, PDF, PowerPoint, Word, or a SCORM / xAPI .zip</p>}
+          </div>
+        </div>
+      )}
       {/* ------------------------------------------------------ left panel */}
       <aside className="w-full lg:w-[400px] shrink-0 border-b lg:border-b-0 lg:border-r border-line flex flex-col">
         <div className="h-[66px] bg-navy-900 flex items-center gap-3 px-4 shrink-0">
@@ -267,7 +334,7 @@ export default function CourseBuilder() {
               <Icon name="bookPlus" className="w-8 h-8 mx-auto text-brand-700 mb-3" strokeWidth={1.4} />
               <p className="text-[14.5px] font-semibold text-brand-700">Add content to your course</p>
               <p className="hint mt-1.5">
-                Drag and drop files here, or click the Add button above, to build your course.
+                Drag and drop files here (video, audio, documents, SCORM .zip), or click the Add button above, to build your course.
               </p>
             </div>
           ) : (
@@ -368,8 +435,9 @@ export default function CourseBuilder() {
                 </div>
               ) : (
                 <ul className="divide-y divide-line/70">
-                  {course.units.map((unit) =>
-                    unit.type === 'section' ? (
+                  {course.units.map((raw) => {
+                    const unit = resolveUnit(raw, courses)
+                    return unit.type === 'section' ? (
                       <li key={unit.id} className="px-6 py-3 bg-gray-50">
                         <span className="text-[12.5px] font-semibold uppercase tracking-wide text-ink-500">
                           {unit.name}
@@ -386,14 +454,19 @@ export default function CourseBuilder() {
                             {unitLabel(unit.type)}
                             {unit.type === 'test' && ` · ${(unit.data?.questions || []).length} questions`}
                             {unit.type === 'ilt' && ` · ${(unit.data?.sessions || []).length} sessions`}
+                            {unit.type === 'scorm' && unit.data?.title && ` · ${unit.data.title}`}
+                            {raw.linkedFrom && ` · linked from ${linkSource(raw, courses)?.course.name || 'a deleted unit'}`}
                           </span>
                         </span>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingUnit(unit)} disabled={!canEdit}>
+                        <Button size="sm" variant="ghost" icon="report" onClick={() => setResults(unit)}>
+                          Results
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingUnit(raw)} disabled={!canEdit}>
                           Edit
                         </Button>
                       </li>
-                    ),
-                  )}
+                    )
+                  })}
                 </ul>
               ))}
 
@@ -456,6 +529,17 @@ export default function CourseBuilder() {
         toast={toast}
       />
 
+      <Drawer
+        open={!!results}
+        onClose={() => setResults(null)}
+        title={results?.name || 'Results'}
+        subtitle={results ? `${unitLabel(results.type)} · ${course.name}` : ''}
+        width="max-w-3xl"
+        footer={<Button onClick={() => setResults(null)}>Done</Button>}
+      >
+        {results && <UnitResults course={course} unit={results} />}
+      </Drawer>
+
       <Drawer open={panel === 'discussion'} onClose={() => setPanel(null)} title="Discussion" subtitle={course.name} width="max-w-2xl" footer={<Button onClick={() => setPanel(null)}>Done</Button>}>
         {panel === 'discussion' && <Discussion course={course} />}
       </Drawer>
@@ -470,6 +554,7 @@ export default function CourseBuilder() {
           .filter((c) => c.id !== course.id && c.code)
           .map((c) => c.code.trim().toLowerCase())}
         settings={settings}
+        courses={courses}
         onClose={() => setPanel(null)}
         onSave={(changes) => {
           actions.updateCourse(course.id, changes)

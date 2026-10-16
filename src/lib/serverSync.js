@@ -29,6 +29,9 @@ export const COLLECTIONS = [
   'orders',
   'jobs',
   'outbox',
+  'attempts',
+  'registrations',
+  'calendarEvents',
 ]
 
 export const emptyState = (settings = {}) => ({

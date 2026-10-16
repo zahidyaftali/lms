@@ -15,6 +15,8 @@ import {
 import RichText from './RichText'
 import { DEFAULT_UNIT_DATA, isHtml, unitLabel } from './unitTypes'
 import { isSharedFile, putFile } from '../../lib/fileStore'
+import { storePackage } from '../../lib/packages'
+import { linkSource } from '../../lib/courseAccess'
 import { useData } from '../../context/DataContext'
 import { fileSize, uid } from '../../lib/utils'
 
@@ -31,6 +33,7 @@ export default function UnitEditor({ open, unit, onClose, onSave }) {
   if (!unit) return null
 
   const set = (changes) => setData((d) => ({ ...d, ...changes }))
+  if (unit.linkedFrom) return <LinkedUnitEditor open={open} unit={unit} name={name} setName={setName} onClose={onClose} onSave={onSave} />
 
   return (
     <Drawer
@@ -84,15 +87,7 @@ export default function UnitEditor({ open, unit, onClose, onSave }) {
         />
       )}
 
-      {unit.type === 'scorm' && (
-        <UploadField
-          label="SCORM / xAPI / cmi5 package"
-          hint="Upload the .zip export from your authoring tool."
-          accept=".zip"
-          data={data}
-          set={set}
-        />
-      )}
+      {unit.type === 'scorm' && <PackageField data={data} set={set} onTitle={(title) => /^New /.test(name) && title && setName(title)} />}
 
       {unit.type === 'iframe' && (
         <>
@@ -114,12 +109,20 @@ export default function UnitEditor({ open, unit, onClose, onSave }) {
             <RichText value={asHtml(data.instructions)} onChange={(instructions) => set({ instructions })} />
           </Field>
           <div className="grid grid-cols-2 gap-x-5">
-            <Field label="Due within (days)">
-              <Input type="number" value={data.dueDays} onChange={(e) => set({ dueDays: Number(e.target.value) })} />
+            <Field label="Due within (days)" hint="Counted from the day each learner enrolls. 0 = no due date.">
+              <Input type="number" min="0" value={data.dueDays} onChange={(e) => set({ dueDays: Math.max(0, Number(e.target.value) || 0) })} />
             </Field>
-            <Field label="Maximum score">
-              <Input type="number" value={data.maxScore} onChange={(e) => set({ maxScore: Number(e.target.value) })} />
+            <Field label="The unit is completed when">
+              <Select value={data.completeOn === 'pass' ? 'pass' : 'submit'} onChange={(e) => set({ completeOn: e.target.value })}>
+                <option value="submit">The learner hands it in</option>
+                <option value="pass">It is graded at the pass mark</option>
+              </Select>
             </Field>
+            {data.completeOn === 'pass' && (
+              <Field label="Pass mark (%)" hint="Below it, the assignment goes back to the learner to hand in again.">
+                <Input type="number" min="0" max="100" value={data.passScore ?? 70} onChange={(e) => set({ passScore: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} />
+              </Field>
+            )}
           </div>
           <Toggle
             checked={data.allowFileUpload}
@@ -252,18 +255,25 @@ function TestEditor({ data, set }) {
           type,
           text: '',
           points: 1,
+          ...(type === 'gap' ? { answer: '' } : {}),
           options:
             type === 'truefalse'
               ? [
                   { id: uid('o'), text: 'True', correct: true },
                   { id: uid('o'), text: 'False', correct: false },
                 ]
-              : type === 'text'
+              : type === 'text' || type === 'gap'
                 ? []
-                : [
-                    { id: uid('o'), text: '', correct: true },
-                    { id: uid('o'), text: '', correct: false },
-                  ],
+                : type === 'ordering'
+                  ? [
+                      { id: uid('o'), text: '' },
+                      { id: uid('o'), text: '' },
+                      { id: uid('o'), text: '' },
+                    ]
+                  : [
+                      { id: uid('o'), text: '', correct: true },
+                      { id: uid('o'), text: '', correct: false },
+                    ],
         },
       ],
     })
@@ -305,6 +315,16 @@ function TestEditor({ data, set }) {
             <option value="shuffle">Shuffle for each attempt</option>
           </Select>
         </Field>
+        <Field label="Questions per attempt" hint={`0 = all ${questions.length}. Fewer draws a random set each time.`}>
+          <Input type="number" min="0" max={questions.length || undefined} value={data.poolSize || 0} onChange={(e) => set({ poolSize: Math.max(0, Number(e.target.value) || 0) })} />
+        </Field>
+        <Field label="Show learners the correct answers">
+          <Select value={data.showAnswers || 'never'} onChange={(e) => set({ showAnswers: e.target.value })}>
+            <option value="never">Never</option>
+            <option value="after">After each attempt</option>
+            <option value="passed">Once they pass</option>
+          </Select>
+        </Field>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-3 mt-2">
@@ -318,6 +338,12 @@ function TestEditor({ data, set }) {
           </Button>
           <Button size="sm" variant="ghost" onClick={() => addQuestion('truefalse')}>
             + True/False
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => addQuestion('gap')}>
+            + Fill in the blank
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => addQuestion('ordering')}>
+            + Ordering
           </Button>
           <Button size="sm" variant="ghost" onClick={() => addQuestion('text')}>
             + Free text
@@ -338,15 +364,7 @@ function TestEditor({ data, set }) {
               <span className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center justify-center shrink-0">
                 {index + 1}
               </span>
-              <Badge tone="blue">
-                {q.type === 'single'
-                  ? 'Single choice'
-                  : q.type === 'multiple'
-                    ? 'Multiple choice'
-                    : q.type === 'truefalse'
-                      ? 'True / False'
-                      : 'Free text'}
-              </Badge>
+              <Badge tone="blue">{QUESTION_TYPES[q.type] || 'Question'}</Badge>
               <span className="flex-1" />
               <button onClick={() => removeQuestion(q.id)} className="text-ink-400 hover:text-red-600">
                 <Icon name="trash" className="w-[18px] h-[18px]" />
@@ -361,7 +379,38 @@ function TestEditor({ data, set }) {
               className="mb-3"
             />
 
-            {q.type !== 'text' && (
+            {q.type === 'gap' && (
+              <Field label="Accepted answers" hint="Separate several accepted answers with |, e.g. 98.6|98.6 F. Capitals and extra spaces are ignored.">
+                <Input value={q.answer || ''} onChange={(e) => updateQuestion(q.id, { answer: e.target.value })} placeholder="Correct answer" />
+              </Field>
+            )}
+
+            {q.type === 'ordering' && (
+              <div className="space-y-2.5">
+                {q.options.map((o, i) => (
+                  <div key={o.id} className="flex items-center gap-3">
+                    <span className="w-6 text-[13px] text-ink-500">{i + 1}.</span>
+                    <Input
+                      value={o.text}
+                      placeholder="Item"
+                      onChange={(e) => updateQuestion(q.id, { options: q.options.map((x) => (x.id === o.id ? { ...x, text: e.target.value } : x)) })}
+                      className="h-10"
+                    />
+                    {q.options.length > 2 && (
+                      <button onClick={() => updateQuestion(q.id, { options: q.options.filter((x) => x.id !== o.id) })} className="text-ink-400 hover:text-red-600 shrink-0">
+                        <Icon name="x" className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={() => updateQuestion(q.id, { options: [...q.options, { id: uid('o'), text: '' }] })} className="link text-[13px]">
+                  + Add item
+                </button>
+                <p className="hint pt-1">Write the items in the correct order. Learners see them shuffled.</p>
+              </div>
+            )}
+
+            {!['text', 'gap', 'ordering'].includes(q.type) && (
               <div className="space-y-2.5">
                 {q.options.map((o) => (
                   <div key={o.id} className="flex items-center gap-3">
@@ -414,8 +463,15 @@ function TestEditor({ data, set }) {
             )}
 
             {q.type === 'text' && (
-              <p className="hint">Free-text answers are reviewed by the instructor from the Grading page.</p>
+              <p className="hint">Free-text answers are graded by an instructor on the Grading page. Until then the attempt waits for its grade.</p>
             )}
+
+            <Input
+              value={q.explanation || ''}
+              onChange={(e) => updateQuestion(q.id, { explanation: e.target.value })}
+              placeholder="Explanation shown with the correct answer (optional)"
+              className="mt-3 h-10"
+            />
 
             <div className="mt-3 flex items-center gap-3">
               <span className="text-[13px] text-ink-500">Points</span>
@@ -438,31 +494,40 @@ function SurveyEditor({ data, set }) {
   const questions = data.questions || []
   const update = (id, changes) =>
     set({ questions: questions.map((q) => (q.id === id ? { ...q, ...changes } : q)) })
+  const add = (type) =>
+    set({
+      questions: [
+        ...questions,
+        { id: uid('sq'), type, text: '', options: type === 'single' || type === 'multiple' ? [{ id: uid('o'), text: '' }, { id: uid('o'), text: '' }] : [] },
+      ],
+    })
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 mb-3">
+      <Field label="Introduction" hint="Shown above the questions (optional).">
+        <RichText value={asHtml(data.description)} onChange={(description) => set({ description })} minHeight={90} />
+      </Field>
+      <div className="mb-5">
+        <Toggle
+          checked={!!data.anonymous}
+          onChange={(v) => set({ anonymous: v })}
+          label="Anonymous"
+          hint="Instructors and reports see the answers without the learner's name."
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
         <h4 className="text-[15px] font-semibold">Survey questions ({questions.length})</h4>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() =>
-              set({
-                questions: [
-                  ...questions,
-                  { id: uid('sq'), type: 'single', text: '', options: [{ id: uid('o'), text: '' }] },
-                ],
-              })
-            }
-          >
-            + Choice
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" onClick={() => add('single')}>
+            + One choice
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => set({ questions: [...questions, { id: uid('sq'), type: 'text', text: '', options: [] }] })}
-          >
+          <Button size="sm" variant="ghost" onClick={() => add('multiple')}>
+            + Several choices
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => add('rating')}>
+            + Rating 1–5
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => add('text')}>
             + Open answer
           </Button>
         </div>
@@ -473,7 +538,7 @@ function SurveyEditor({ data, set }) {
           <li key={q.id} className="border border-line rounded-md p-4">
             <div className="flex items-center gap-3 mb-3">
               <span className="text-[13px] text-ink-500">Question {i + 1}</span>
-              <Badge>{q.type === 'text' ? 'Open answer' : 'Choice'}</Badge>
+              <Badge>{q.type === 'text' ? 'Open answer' : q.type === 'rating' ? 'Rating 1–5' : q.type === 'multiple' ? 'Several choices' : 'One choice'}</Badge>
               <span className="flex-1" />
               <button
                 onClick={() => set({ questions: questions.filter((x) => x.id !== q.id) })}
@@ -488,18 +553,30 @@ function SurveyEditor({ data, set }) {
               onChange={(e) => update(q.id, { text: e.target.value })}
               className="mb-3"
             />
-            {q.type === 'single' && (
+            {q.type === 'rating' && (
+              <div className="grid grid-cols-2 gap-x-4">
+                <Input value={q.low || ''} placeholder="Label for 1 (e.g. Poor)" className="h-10" onChange={(e) => update(q.id, { low: e.target.value })} />
+                <Input value={q.high || ''} placeholder="Label for 5 (e.g. Excellent)" className="h-10" onChange={(e) => update(q.id, { high: e.target.value })} />
+              </div>
+            )}
+            {(q.type === 'single' || q.type === 'multiple') && (
               <div className="space-y-2.5">
                 {q.options.map((o) => (
-                  <Input
-                    key={o.id}
-                    value={o.text}
-                    placeholder="Option"
-                    className="h-10"
-                    onChange={(e) =>
-                      update(q.id, { options: q.options.map((x) => (x.id === o.id ? { ...x, text: e.target.value } : x)) })
-                    }
-                  />
+                  <div key={o.id} className="flex items-center gap-3">
+                    <Input
+                      value={o.text}
+                      placeholder="Option"
+                      className="h-10"
+                      onChange={(e) =>
+                        update(q.id, { options: q.options.map((x) => (x.id === o.id ? { ...x, text: e.target.value } : x)) })
+                      }
+                    />
+                    {q.options.length > 2 && (
+                      <button onClick={() => update(q.id, { options: q.options.filter((x) => x.id !== o.id) })} className="text-ink-400 hover:text-red-600 shrink-0">
+                        <Icon name="x" className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
                 <button
                   onClick={() => update(q.id, { options: [...q.options, { id: uid('o'), text: '' }] })}
@@ -602,6 +679,15 @@ function IltEditor({ data, set }) {
 
   return (
     <>
+      <Field label="About these sessions" hint="Shown to learners above the list of sessions (optional).">
+        <RichText value={asHtml(data.description)} onChange={(description) => set({ description })} minHeight={90} />
+      </Field>
+      <Field label="The unit is completed when" hint="Learners register for one session. Attendance is recorded on the Grading page → Sessions & attendance.">
+        <Select value={data.completeOn === 'registration' ? 'registration' : 'attendance'} onChange={(e) => set({ completeOn: e.target.value })}>
+          <option value="attendance">An instructor marks the learner present</option>
+          <option value="registration">The learner registers for a session</option>
+        </Select>
+      </Field>
       <div className="flex items-center justify-between gap-4 mb-3">
         <h4 className="text-[15px] font-semibold">Sessions ({sessions.length})</h4>
         <Button
@@ -692,4 +778,153 @@ function asHtml(value) {
     .split(/\n{2,}/)
     .map((p) => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')}</p>`)
     .join('')
+}
+
+const QUESTION_TYPES = {
+  single: 'Single choice',
+  multiple: 'Multiple choice',
+  truefalse: 'True / False',
+  gap: 'Fill in the blank',
+  ordering: 'Ordering',
+  text: 'Free text',
+}
+
+const PACKAGE_KIND = { scorm12: 'SCORM 1.2', scorm2004: 'SCORM 2004', xapi: 'xAPI (Tin Can)', cmi5: 'cmi5' }
+
+/** SCORM, xAPI and cmi5: the .zip is opened here, its manifest read and its files stored for the player. */
+function PackageField({ data, set, onTitle }) {
+  const { backend } = useData()
+  const [busy, setBusy] = useState(null)
+  const [error, setError] = useState('')
+  const shared = backend.mode === 'server'
+
+  async function take(file) {
+    if (!file) return
+    setError('')
+    setBusy(0)
+    try {
+      const stored = await storePackage(file, { shared, onProgress: setBusy })
+      set({ ...stored, fileId: null, localOnly: !stored.shared })
+      onTitle?.(stored.title)
+    } catch (err) {
+      setError(err.message || 'The package could not be opened.')
+    }
+    setBusy(null)
+  }
+
+  return (
+    <>
+      <Field
+        label="SCORM / xAPI / cmi5 package"
+        hint={busy != null ? `Opening and storing the package… ${busy}%` : 'Upload the .zip export from your authoring tool (Articulate, Captivate, iSpring, Lectora…).'}
+        error={error || undefined}
+      >
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className={busy != null ? 'btn-ghost opacity-60 pointer-events-none' : 'btn-ghost cursor-pointer'}>
+            <Icon name="upload" className="w-[18px] h-[18px]" />
+            {data.packageId ? 'Replace package' : 'Choose .zip file'}
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(e) => {
+                take(e.target.files?.[0])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {data.fileName && (
+            <span className="inline-flex items-center gap-2 text-[13px] text-ink-700">
+              <Icon name="package" className="w-4 h-4" />
+              {data.fileName} {data.fileSize ? `· ${fileSize(data.fileSize)}` : ''}
+            </span>
+          )}
+        </div>
+      </Field>
+
+      {data.packageId ? (
+        <div className="border border-line rounded-md px-4 py-3.5 mb-5 text-[13.5px]">
+          <p className="font-medium text-ink-900">{data.title || 'Package'}</p>
+          <p className="hint mt-0.5">
+            {PACKAGE_KIND[data.kind] || 'Package'} · {data.files} files · {(data.scos || []).length} lesson{(data.scos || []).length === 1 ? '' : 's'}
+          </p>
+          {(data.scos || []).length > 1 && (
+            <ol className="mt-2 list-decimal pl-5 text-ink-700 space-y-0.5">
+              {data.scos.map((s) => (
+                <li key={s.id}>{s.title}</li>
+              ))}
+            </ol>
+          )}
+          {!data.shared && (
+            <p className="mt-3 flex gap-2 text-[13px] leading-5 text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+              <Icon name="alert" className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>Without the shared database this package is stored in this browser only, so learners on other devices cannot open it. Upload it again once the database is connected.</span>
+            </p>
+          )}
+        </div>
+      ) : (
+        data.fileName && (
+          <p className="mb-5 flex gap-2 text-[13px] leading-5 text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
+            <Icon name="alert" className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{data.fileName} was uploaded before the portal could play packages. Upload it again so learners can open it.</span>
+          </p>
+        )
+      )}
+
+      <Field label="The unit is completed when">
+        <Select value={data.completeOn === 'passed' ? 'passed' : 'completed'} onChange={(e) => set({ completeOn: e.target.value })}>
+          <option value="completed">The package reports it is completed (or passed)</option>
+          <option value="passed">The package reports it is passed</option>
+        </Select>
+      </Field>
+    </>
+  )
+}
+
+/** A unit linked from another course: its content is edited there. */
+function LinkedUnitEditor({ open, unit, name, setName, onClose, onSave }) {
+  const { courses } = useData()
+  const source = linkSource(unit, courses)
+  return (
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title="Linked unit"
+      subtitle="Its content comes from another course."
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          {source && (
+            <Button
+              variant="outline"
+              onClick={() => onSave({ name: name.trim() || source.unit.name, type: source.unit.type, data: structuredClone(source.unit.data || {}), linkedFrom: null })}
+            >
+              Make an editable copy
+            </Button>
+          )}
+          <Button onClick={() => onSave({ name: name.trim() || 'Untitled unit' })}>Save</Button>
+        </>
+      }
+    >
+      <Field label="Unit name" required>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      {source ? (
+        <p className="flex gap-2.5 text-[13.5px] leading-5 text-ink-700 bg-brand-50 border border-brand-100 rounded-md px-3.5 py-2.5">
+          <Icon name="link" className="w-[18px] h-[18px] shrink-0 text-brand-700" />
+          <span>
+            Learners see the current content of <strong>{source.unit.name}</strong> in <strong>{source.course.name}</strong>. Edit it there and the change shows in every
+            course that links to it. Make an editable copy to change it here only.
+          </span>
+        </p>
+      ) : (
+        <p className="flex gap-2.5 text-[13.5px] leading-5 text-amber-900 bg-amber-50 border border-amber-100 rounded-md px-3.5 py-2.5">
+          <Icon name="alert" className="w-[18px] h-[18px] shrink-0" />
+          <span>The unit this was linked to has been deleted, so learners see the copy made when it was linked.</span>
+        </p>
+      )}
+    </Drawer>
+  )
 }

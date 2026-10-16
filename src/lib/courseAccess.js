@@ -67,6 +67,29 @@ export function canSelfEnroll(course, settings) {
 /** Units are taken in order when Account & Settings → Courses → Unit navigation says so. */
 export const unitsInOrder = (settings) => settings?.courses?.unitNavigation === 'In order'
 
+/**
+ * A unit linked from another course shows that unit's current content (its name and
+ * progress stay its own). A link whose source was deleted keeps the copy it was made with.
+ */
+export function resolveUnit(unit, courses = []) {
+  if (!unit?.linkedFrom) return unit
+  for (const c of courses) {
+    const source = (c.units || []).find((u) => u.id === unit.linkedFrom)
+    if (source) return { ...unit, type: source.type, data: source.data, linkedCourse: c.name }
+  }
+  return unit
+}
+
+/** Where a linked unit comes from, for the builder. */
+export function linkSource(unit, courses = []) {
+  if (!unit?.linkedFrom) return null
+  for (const c of courses) {
+    const source = (c.units || []).find((u) => u.id === unit.linkedFrom)
+    if (source) return { course: c, unit: source }
+  }
+  return null
+}
+
 export function isPubliclyShared(course) {
   return !!course && course.status === 'active' && !!course.publicSharing
 }
